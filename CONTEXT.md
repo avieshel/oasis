@@ -110,7 +110,7 @@ were defensible; we chose signal over minimalism.
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | ORM / DB          | **Prisma + PostgreSQL**                                                                                                                                                    | Postgres for cluster deployment; Prisma gives typed queries and migrations. SQLite only for local dev (Prisma datasource switch). |
 | Sessions          | Server-side, opaque 32B ID in **HttpOnly + Secure + SameSite=Lax** cookie, DB-backed, **rotated on login**, idle 30 m / absolute 12 h sliding                              | Trivial revocation, fixation-proof, multi-process safe (shared DB).                                                               |
-| Password hashing  | **bcrypt** (cost 12)                                                                                                                                                       | Standard.                                                                                                                         |
+| Password hashing  | **bcryptjs** (cost 12)                                                                                                                                                     | Standard.                                                                                                                         |
 | Jira auth         | **Both** API-token (email + token) **and** OAuth 2.0 (3LO); user picks at connect time                                                                                     | API-token for instant demo; OAuth for the realistic flow. Single `jira_connections` table with a `mode` column.                   |
 | Token storage     | **AES-256-GCM** keyed by `APP_SECRET` env var; per-row nonce                                                                                                               | At-rest encryption for both API tokens and OAuth refresh tokens.                                                                  |
 | API key auth      | Random 32B key, base64url; **SHA-256 hashed** at rest; `Authorization: Bearer <key>`                                                                                       | Stateless verification, simple revocation.                                                                                        |
@@ -256,7 +256,7 @@ SameSite=Lax`.** Never a signed/JWT cookie. Revocable on logout, works
    inspection.
 6. **Login must not enable user enumeration**: one generic error
    ("Invalid credentials") for both unknown email and wrong password; same
-   timing profile (bcrypt compare runs either way). Rate-limit login (5/min/IP).
+   timing profile (bcryptjs compare runs either way). Rate-limit login (5/min/IP).
 7. **Global-unique email in this demo** (see §8): keeps login-by-email
    unambiguous across tenants without an extra tenant selector.
 8. **Session/cookie setting only over HTTPS in prod**; `Secure` flag on.
@@ -298,7 +298,7 @@ audit_log(id PK, tenant_id, user_id, action, target, ip, user_agent, at)
 Notes:
 
 - Token ciphertext + nonce stored side-by-side; nonce is the GCM nonce.
-- `key_hash` is SHA-256 of the raw key — bcrypt is overkill here (low-entropy
+- `key_hash` is SHA-256 of the raw key — bcryptjs is overkill here (low-entropy
   API keys don't need slow hashing; SHA-256 + constant-time compare is the
   standard pattern).
 - `tickets_cache` holds only tickets **created via this app**; it is a derived
@@ -313,7 +313,7 @@ What gets encrypted, how, and with what key:
 
 | Secret                           | At rest                                | Why this shape                                                                     |
 | -------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------- |
-| User password                    | **bcrypt cost 12** hash                | Standard password hashing; never reversible                                        |
+| User password                    | **bcryptjs cost 12** hash              | Standard password hashing; never reversible                                        |
 | Jira API token (api_token mode)  | **AES-256-GCM**, keyed by `APP_SECRET` | Must be retrievable to make API calls, so encrypt-not-hash                         |
 | Jira OAuth access/refresh tokens | **AES-256-GCM**, keyed by `APP_SECRET` | Same rationale; access token only decrypted for the in-flight Jira call            |
 | API keys (our own)               | **SHA-256 hash**                       | High-entropy random (32 B) — hash suffices, cheap to verify, constant-time compare |
@@ -423,7 +423,7 @@ and §7.1.
 
 ## 11. Security Checklist
 
-- [x] Passwords: bcrypt cost 12.
+- [x] Passwords: bcryptjs cost 12.
 - [x] Sessions: random 32B ID, HttpOnly, Secure, SameSite=Lax, server-side store.
 - [x] CSRF on all state-changing UI routes.
 - [x] Output encoding via template engine auto-escape.
@@ -527,7 +527,7 @@ oasis/
     config.ts                    # zod-validated env loader
     infra/
       db.ts                      # prisma client
-      crypto.ts                  # seal/open (AES-GCM), random, bcrypt, sha256
+      crypto.ts                  # seal/open (AES-GCM), random, bcryptjs, sha256
       session.ts                 # cookie session manager + store
       csrf.ts                    # double-submit CSRF middleware
       rate-limit.ts              # rate limiting setup

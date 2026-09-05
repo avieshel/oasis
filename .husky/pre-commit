@@ -1,0 +1,18 @@
+if ! command -v trufflehog >/dev/null 2>&1; then
+  echo "❌ Commit blocked: trufflehog is required (brew install trufflehog)."
+  exit 1
+fi
+
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
+
+if [ -n "$STAGED_FILES" ]; then
+  RESULT=$(echo "$STAGED_FILES" | xargs trufflehog filesystem --no-verification --results=unverified --no-update 2>/dev/null)
+  if [ -n "$RESULT" ]; then
+    echo "$RESULT"
+    echo "❌ Commit blocked: potential secrets detected."
+    exit 1
+  fi
+  echo "✅ No secrets detected."
+fi
+
+npx lint-staged

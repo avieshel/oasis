@@ -5,7 +5,7 @@ import {
   randomBytes as nodeRandomBytes,
   timingSafeEqual,
 } from 'node:crypto';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 const GCM_TAG_LENGTH = 16;
 const NONCE_LENGTH = 12;
