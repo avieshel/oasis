@@ -1,0 +1,90 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model tenants {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  name       String
+  created_at DateTime @default(now())
+}
+
+model users {
+  id            String   @id @default(cuid())
+  tenant_id     String
+  email         String   @unique
+  password_hash String
+  created_at    DateTime @default(now())
+}
+
+model sessions {
+  id                   String   @id @default(cuid())
+  user_id              String
+  created_at           DateTime @default(now())
+  last_seen_at         DateTime @default(now())
+  expires_idle_at      DateTime
+  expires_absolute_at  DateTime
+  rotated_from_id      String?
+}
+
+model api_keys {
+  id         String    @id @default(cuid())
+  tenant_id  String
+  user_id    String
+  name       String
+  key_hash   String    @unique
+  created_at DateTime  @default(now())
+  last_used_at DateTime?
+  revoked_at  DateTime?
+}
+
+model jira_connections {
+  id                     String    @id @default(cuid())
+  tenant_id              String
+  user_id                String    @unique
+  mode                   String
+  cloud_id               String?
+  site_url               String?
+  email                  String?
+  api_token_cipher       String?
+  api_token_nonce        String?
+  access_token_cipher    String?
+  access_token_nonce     String?
+  refresh_token_cipher   String?
+  refresh_token_nonce    String?
+  oauth_expires_at       DateTime?
+  oauth_scopes           String?
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @updatedAt
+}
+
+model tickets_cache {
+  id               String    @id @default(cuid())
+  tenant_id        String
+  user_id          String
+  jira_site        String
+  project_key      String
+  issue_key        String
+  title            String
+  url              String
+  jira_created_at  DateTime
+  reconciled_at    DateTime?
+
+  @@unique([user_id, jira_site, project_key, issue_key])
+}
+
+model audit_log {
+  id         String   @id @default(cuid())
+  tenant_id  String
+  user_id    String
+  action     String
+  target     String
+  ip         String?
+  user_agent String?
+  at         DateTime @default(now())
+}
