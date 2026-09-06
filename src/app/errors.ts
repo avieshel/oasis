@@ -7,29 +7,9 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Response } from 'express';
-
-export interface AppErrorOptions {
-  statusCode: number;
-  code: string;
-  fields?: Record<string, string>;
-  detail?: string;
-}
-
-export class AppError extends Error {
-  readonly statusCode: number;
-  readonly code: string;
-  readonly fields?: Record<string, string>;
-  readonly detail?: string;
-
-  constructor(options: AppErrorOptions) {
-    super(options.code);
-    this.name = 'AppError';
-    this.statusCode = options.statusCode;
-    this.code = options.code;
-    this.fields = options.fields;
-    this.detail = options.detail;
-  }
-}
+import { AppError } from './errors/error-classes';
+import { ErrorCode } from './errors/error-codes';
+import { ZodError } from 'zod';
 
 @Catch()
 export class AppExceptionFilter implements ExceptionFilter {
@@ -44,6 +24,22 @@ export class AppExceptionFilter implements ExceptionFilter {
         error: exception.code,
         ...(exception.fields ? { fields: exception.fields } : {}),
         ...(exception.detail ? { detail: exception.detail } : {}),
+        ...(exception.meta ? { meta: exception.meta } : {}),
+      });
+      return;
+    }
+
+    if (exception instanceof ZodError) {
+      const fields: Record<string, string> = {};
+      for (const issue of exception.issues) {
+        const path = issue.path.join('.');
+        // eslint-disable-next-line security/detect-object-injection -- path is from Zod schema keys, not user-controlled property access
+        fields[path] = issue.message;
+      }
+      this.logger.warn(`ZodError: ${JSON.stringify(fields)}`);
+      response.status(HttpStatus.BAD_REQUEST).json({
+        error: ErrorCode.VALIDATION_ERROR,
+        fields,
       });
       return;
     }
@@ -52,7 +48,7 @@ export class AppExceptionFilter implements ExceptionFilter {
       const status = exception.getStatus();
       this.logger.warn(`HttpException ${status}`);
       response.status(status).json({
-        error: 'http_error',
+        error: ErrorCode.HTTP_ERROR,
         detail: exception.message,
       });
       return;
@@ -63,7 +59,11 @@ export class AppExceptionFilter implements ExceptionFilter {
       exception instanceof Error ? exception.stack : String(exception),
     );
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
-      error: 'internal_server_error',
+      error: ErrorCode.INTERNAL_ERROR,
     });
   }
 }
+
+export { AppError } from './errors/error-classes';
+export * from './errors/error-codes';
+export * from './errors/error-classes';

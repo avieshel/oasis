@@ -18,6 +18,53 @@ export const appConfigSchema = z.object({
     .transform((v) => v === 'true'),
   JIRA_CACHE_TTL_MS: z.coerce.number().int().positive().default(30000),
   CORS_ORIGIN: z.string().optional(),
+
+  RATE_LIMIT_GLOBAL_TTL_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_GLOBAL_LIMIT: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_LOGIN_TTL_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_LOGIN_LIMIT: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_SIGNUP_TTL_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_SIGNUP_LIMIT: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_TICKET_CREATE_UI_TTL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .optional(),
+  RATE_LIMIT_TICKET_CREATE_UI_LIMIT: z.coerce
+    .number()
+    .int()
+    .positive()
+    .optional(),
+  RATE_LIMIT_TICKET_CREATE_API_TTL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .optional(),
+  RATE_LIMIT_TICKET_CREATE_API_LIMIT: z.coerce
+    .number()
+    .int()
+    .positive()
+    .optional(),
+  RATE_LIMIT_API_KEY_CREATE_TTL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .optional(),
+  RATE_LIMIT_API_KEY_CREATE_LIMIT: z.coerce
+    .number()
+    .int()
+    .positive()
+    .optional(),
+  RATE_LIMIT_API_KEY_USE_TTL_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_API_KEY_USE_LIMIT: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_JIRA_CONNECT_TTL_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_JIRA_CONNECT_LIMIT: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_JIRA_PROJECTS_TTL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .optional(),
+  RATE_LIMIT_JIRA_PROJECTS_LIMIT: z.coerce.number().int().positive().optional(),
 });
 
 export type AppConfig = z.infer<typeof appConfigSchema>;
