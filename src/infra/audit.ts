@@ -6,6 +6,9 @@ export const AuditAction = {
   SIGNUP: 'signup',
   LOGIN: 'login',
   LOGOUT: 'logout',
+  JIRA_CONNECT: 'jira_connect',
+  JIRA_DISCONNECT: 'jira_disconnect',
+  JIRA_TICKET_CREATE: 'jira_ticket_create',
 } as const;
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];

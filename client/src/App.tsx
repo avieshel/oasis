@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthPage } from './pages/AuthPage';
 import { HomePage } from './pages/HomePage';
+import { JiraPage } from './pages/JiraPage';
 
 export function App(): JSX.Element {
   return (
@@ -9,6 +10,7 @@ export function App(): JSX.Element {
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/signup" element={<AuthPage mode="signup" />} />
         <Route path="/" element={<HomePage />} />
+        <Route path="/jira" element={<JiraPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

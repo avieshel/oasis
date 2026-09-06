@@ -5,7 +5,7 @@
 > statically by the NestJS process** (§6, still one deploy unit). **Data model
 > §8 + at-rest encryption §8.1.** **Deployment: modular monolith** (§15).
 > Confirmed scope matches §2 exactly — a single Jira integration gateway. Jira
-> auth supports **both** API-token and OAuth (per-user connection model).
+> auth is **API-token** (OAuth 3LO deferred; per-user connection model).
 > **Identity core**: local auth (email+password) default, server-side sessions,
 > invariants in §7.1. **Caching**: credentials never cached; derived
 > read-models cached (§11.1). Adversarial review checklist: §11.2. Bonus Blog
@@ -106,23 +106,23 @@ were defensible; we chose signal over minimalism.
 
 ### 4.3 Other choices
 
-| Concern           | Choice                                                                                                                                                                     | Reasoning                                                                                                                         |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| ORM / DB          | **Prisma + PostgreSQL**                                                                                                                                                    | Postgres for cluster deployment; Prisma gives typed queries and migrations. SQLite only for local dev (Prisma datasource switch). |
-| Sessions          | Server-side, opaque 32B ID in **HttpOnly + Secure + SameSite=Lax** cookie, DB-backed, **rotated on login**, idle 30 m / absolute 12 h sliding                              | Trivial revocation, fixation-proof, multi-process safe (shared DB).                                                               |
-| Password hashing  | **bcryptjs** (cost 12)                                                                                                                                                     | Standard.                                                                                                                         |
-| Jira auth         | **Both** API-token (email + token) **and** OAuth 2.0 (3LO); user picks at connect time                                                                                     | API-token for instant demo; OAuth for the realistic flow. Single `jira_connections` table with a `mode` column.                   |
-| Token storage     | **AES-256-GCM** keyed by `APP_SECRET` env var; per-row nonce                                                                                                               | At-rest encryption for both API tokens and OAuth refresh tokens.                                                                  |
-| API key auth      | Random 32B key, base64url; **SHA-256 hashed** at rest; `Authorization: Bearer <key>`                                                                                       | Stateless verification, simple revocation.                                                                                        |
-| API validation    | **Zod** schemas shared between UI form parsing and REST body parsing                                                                                                       | One source of truth for the ticket shape.                                                                                         |
-| UI                | **React + Vite SPA**, built once and **served statically by the NestJS process** (`useStaticAssets`); dev uses the Vite dev server with a proxy to the API (single origin) | Browser sees one origin in dev, no CORS/CSRF complexity; prod is still one deployment unit (§6).                                  |
-| Logging           | **pino** + `nestjs-pino`                                                                                                                                                   | Fast, JSON-structured for cluster log shipping.                                                                                   |
-| Rate limiting     | `@nestjs/throttler` on our endpoints; **honor Jira 429 / `Retry-After`**; single-flight on OAuth refresh                                                                   | Login + ticket creation + REST, per-IP/key; upstream self-throttling, no blind create-retry.                                      |
-| Jira read caching | Recent tickets: local read model + async JQL reconcile (TTL 30 s); projects: per-user 60 s TTL + refresh link                                                              | Dashboard loads with zero Jira calls; respects Jira rate limits (§11.1).                                                          |
-| CSRF              | Double-submit cookie (session-independent) via custom Nest middleware                                                                                                      | Defense in depth on top of SameSite=Lax.                                                                                          |
-| Security headers  | `helmet` via middleware (`contentSecurityPolicy` set for our own SPA origin)                                                                                               | CSP, X-Content-Type-Options, Referrer-Policy.                                                                                     |
-| Health endpoints  | `/healthz` (liveness), `/readyz` (DB ping)                                                                                                                                 | Cluster-friendly.                                                                                                                 |
-| Tests             | **Vitest** + **supertest**                                                                                                                                                 | Fast, ESM-native, plays well with TS.                                                                                             |
+| Concern           | Choice                                                                                                                                                                     | Reasoning                                                                                                                                                            |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ORM / DB          | **Prisma + PostgreSQL**                                                                                                                                                    | Postgres for cluster deployment; Prisma gives typed queries and migrations. SQLite only for local dev (Prisma datasource switch).                                    |
+| Sessions          | Server-side, opaque 32B ID in **HttpOnly + Secure + SameSite=Lax** cookie, DB-backed, **rotated on login**, idle 30 m / absolute 12 h sliding                              | Trivial revocation, fixation-proof, multi-process safe (shared DB).                                                                                                  |
+| Password hashing  | **bcryptjs** (cost 12)                                                                                                                                                     | Standard.                                                                                                                                                            |
+| Jira auth         | **API-token only** (email + API token via Basic auth); OAuth 2.0 (3LO) **deferred** to post-assignment                                                                     | API-token covers assignment §2 #2 ("API-token or OAuth"); OAuth adds ~400 LOC and 4 extra routes with no extra points. `mode` column stays in schema for future use. |
+| Token storage     | **AES-256-GCM** keyed by `APP_SECRET` env var; per-row nonce                                                                                                               | At-rest encryption for both API tokens and OAuth refresh tokens.                                                                                                     |
+| API key auth      | Random 32B key, base64url; **SHA-256 hashed** at rest; `Authorization: Bearer <key>`                                                                                       | Stateless verification, simple revocation.                                                                                                                           |
+| API validation    | **Zod** schemas shared between UI form parsing and REST body parsing                                                                                                       | One source of truth for the ticket shape.                                                                                                                            |
+| UI                | **React + Vite SPA**, built once and **served statically by the NestJS process** (`useStaticAssets`); dev uses the Vite dev server with a proxy to the API (single origin) | Browser sees one origin in dev, no CORS/CSRF complexity; prod is still one deployment unit (§6).                                                                     |
+| Logging           | **pino** + `nestjs-pino`                                                                                                                                                   | Fast, JSON-structured for cluster log shipping.                                                                                                                      |
+| Rate limiting     | `@nestjs/throttler` on our endpoints; **honor Jira 429 / `Retry-After`**; single-flight on OAuth refresh                                                                   | Login + ticket creation + REST, per-IP/key; upstream self-throttling, no blind create-retry.                                                                         |
+| Jira read caching | Recent tickets: local read model + async JQL reconcile (TTL 30 s); projects: per-user 60 s TTL + refresh link                                                              | Dashboard loads with zero Jira calls; respects Jira rate limits (§11.1).                                                                                             |
+| CSRF              | Double-submit cookie (session-independent) via custom Nest middleware                                                                                                      | Defense in depth on top of SameSite=Lax.                                                                                                                             |
+| Security headers  | `helmet` via middleware (`contentSecurityPolicy` set for our own SPA origin)                                                                                               | CSP, X-Content-Type-Options, Referrer-Policy.                                                                                                                        |
+| Health endpoints  | `/healthz` (liveness), `/readyz` (DB ping)                                                                                                                                 | Cluster-friendly.                                                                                                                                                    |
+| Tests             | **Vitest** + **supertest**                                                                                                                                                 | Fast, ESM-native, plays well with TS.                                                                                                                                |
 
 ---
 
@@ -133,6 +133,16 @@ were defensible; we chose signal over minimalism.
   inconsistently across issue views. Minimal surface = smaller error surface.
 - **Jira projects**: any project the connected user has "Create Issues" permission
   in. We list via `/rest/api/3/project/search`; Jira enforces server-side.
+- **Jira connection model (locked §16.5)**: **one Jira connection per user**
+  (`jira_connections.user_id UNIQUE`). One connection = one Jira workspace/site,
+  which contains **many projects**; "select a Jira project from their connected
+  workspace" therefore means picking a project inside the single connection — no
+  connection picker in the UI. Human attribution in Jira comes from per-user
+  auth (Jira Cloud cannot create a ticket on another user's behalf). Automation
+  rides the API-key owner's connection; an autonomous process is a dedicated
+  **bot/svc user** (own Jira service-account link + own API key), the standard
+  pattern. Multiple-connections-per-user and shared/tenant connections are
+  explicit **non-goals** for this scope.
 - **"10 most recent tickets from this app"**: served from a local read
   model (`tickets_cache`) for instant load, then reconciled asynchronously
   against JQL `project = "<KEY>" AND labels = "identityhub-finding" ORDER BY
@@ -303,6 +313,11 @@ Notes:
   standard pattern).
 - `tickets_cache` holds only tickets **created via this app**; it is a derived
   read model, never the source of truth. Source of truth stays in Jira (§11.1).
+- **Exactly one connection per user** in this model — `user_id` is `UNIQUE` on
+  `jira_connections`, and the cache is keyed by `(user_id, jira_site,
+project_key, issue_key)`. Because a user has one connection, "user" is a
+  sufficient key; a future multi-connection model would re-key on
+  `connection_id` (documented in §16.5 as deferred).
 - `tenants` exists even though the assignment is single-customer per install
   in the demo; it's how a real Oasis deployment would isolate customers from
   each other.
@@ -438,8 +453,8 @@ and §7.1.
 - [x] Session rotation on login; idle + absolute expiry (invariants §7.1).
 - [x] Login immune to user enumeration (generic error, uniform timing).
 - [x] Log hygiene: Jira tokens/API keys/passwords never in pino output.
-- [x] OAuth refresh single-flight (no concurrent-token-refresh race).
 - [x] Honor Jira `429` / `Retry-After`; never blind-retry a create.
+- [ ] OAuth refresh single-flight — **deferred** (OAuth not in demo scope; no concurrent token state).
 
 ---
 
@@ -484,7 +499,6 @@ What a reviewer will likely probe, and the design decision that answers each:
 | Login timing/enumeration                               | Generic error, uniform timing                       | §7.1.6                                              |
 | Jira down / slow / 429                                 | Friendly message or last-known-good, never hang/500 | §11.1 + honoring `Retry-After`                      |
 | Token expired/revoked mid-use                          | "Reconnect Jira" path, not raw 401                  | Jira client error mapping (§7 client)               |
-| OAuth refresh under concurrency                        | Single refresh, no token invalidation               | Single-flight refresh (§4.3)                        |
 | Malformed/oversized/invalid JSON                       | 400 field-level (Zod), no crash                     | §9 schemas                                          |
 | API key matrix: missing / wrong / revoked / restricted | 401 vs 403 with clear body                          | §9                                                  |
 | XSS via ticket title in recent list                    | Escaped by template                                 | §11 output encoding                                 |
@@ -567,6 +581,10 @@ oasis/
 - `npm test` (Vitest unit + integration via supertest, hitting Jira via a stub).
 - Manual smoke: start the service with `ALLOW_OPEN_SIGNUP=true`, sign up two
   users in two tenants, verify user A cannot read user B's data or tickets.
+- Live-Jira check (developer-only, optional): `npm run jira:smoke`, driven by
+  `local/jira-credentials.json`. **That file is read solely by the smoke script;
+  the running service never reads it** — live credentials come from HTTP
+  requests at `/app/jira/connect`.
 
 ---
 
@@ -626,8 +644,25 @@ in this scope).
 3. ~~Deployment shape~~ — **resolved: modular monolith** (§15).
 4. ~~Database~~ — **resolved: Postgres + SQLite via Prisma** datasource
    switch.
-5. ~~Multi-user semantics~~ — **resolved: per-user Jira connections**; each
-   user's calls ride their own Jira quota.
+5. ~~Connection semantics~~ — **resolved (locked): exactly one Jira connection
+   per user**; each user's calls ride their own Jira quota. Decision log:
+   - One connection = one Jira workspace/site; a site contains many projects, so
+     requirement #2 ("select a Jira project from their connected workspace") is a
+     project-pick inside the user's single connection — no connection picker.
+   - Attribution in Jira is by per-user auth: Jira Cloud sets `reporter` to the
+     authenticated account and offers no "on-behalf-of", so the truthy "who
+     created this" is the user's own connection. Our `tickets_cache` and
+     `audit_log` record `creator_user_id`/`user_id` for local attribution too.
+   - Automation (REST, §9 API keys) rides the API-key owner's connection; an
+     autonomous process is a **bot/svc user** with its own Jira service-account
+     link + API key — the standard pattern, so no shared/tenant connection is
+     needed. Entry-point is the same `jira_connections` table.
+   - **Deferred / non-goals**: multiple connections per user (needs a second
+     Jira site per person — later: relax the `user_id UNIQUE` constraint and
+     re-key `tickets_cache` on `connection_id`); shared/tenant-level connections
+     (later: `owner_user_id NULL` + tenant default). Model was deliberately kept
+     at the simple form; the multi-connection exploration (§16.5 discussion)
+     was reverted for scope.
 6. **In-app Jira quota token bucket** (mirror Jira's ~100/min per user so we
    self-throttle before Jira rejects) — optional. **Default decision: DEFER.**
    Honoring 429/`Retry-After` + the §11.1 read caches are enough for this

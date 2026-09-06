@@ -17,6 +17,6 @@ import { SessionGuard } from './session.guard';
     SessionGuard,
     PrismaService,
   ],
-  exports: [SessionGuard, SessionManager],
+  exports: [SessionGuard, SessionManager, AuditService],
 })
 export class AuthModule {}

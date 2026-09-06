@@ -6,3 +6,5 @@ client/dist/
 prisma/*.db
 prisma/*.db-journal
 coverage/
+local/*
+!local/jira-credentials.example.json

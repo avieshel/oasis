@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { logout } from '../api/auth';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 
@@ -37,9 +37,16 @@ export function HomePage(): JSX.Element {
       </p>
       <p className="ok">Connected ✓</p>
       {error !== null && <p className="err">{error}</p>}
-      <button type="button" disabled={busy} onClick={() => void handleLogout()}>
-        {busy ? 'Logging out…' : 'Log out'}
-      </button>
+      <Link to="/jira">Jira integration</Link>
+      <div>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void handleLogout()}
+        >
+          {busy ? 'Logging out…' : 'Log out'}
+        </button>
+      </div>
     </main>
   );
 }

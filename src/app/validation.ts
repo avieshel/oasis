@@ -3,6 +3,8 @@ import { z } from 'zod';
 export const MAX_PROJECT_KEY_LENGTH = 10;
 export const MAX_TICKET_TITLE_LENGTH = 255;
 export const MAX_TICKET_DESCRIPTION_LENGTH = 30_000;
+export const MAX_JIRA_SITE_URL_LENGTH = 255;
+export const MAX_API_TOKEN_LENGTH = 1024;
 
 export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_PASSWORD_LENGTH = 128;
@@ -34,3 +36,11 @@ export const ticketCreateSchema = z.object({
 });
 
 export type TicketCreate = z.infer<typeof ticketCreateSchema>;
+
+export const jiraConnectSchema = z.object({
+  site_url: z.string().url().max(MAX_JIRA_SITE_URL_LENGTH),
+  email: z.string().email().max(255),
+  api_token: z.string().min(1).max(MAX_API_TOKEN_LENGTH),
+});
+
+export type JiraConnectInput = z.infer<typeof jiraConnectSchema>;
