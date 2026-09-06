@@ -10,9 +10,19 @@ Agent guide for automated tests (vitest + supertest + shell harness).
     sha256, randomBytes, timing-safe compare).
   - HTTP smoke: boots the real Nest app with `NODE_ENV=test`, hits
     `/healthz` and `/readyz` via supertest.
+- `test/auth.spec.ts` (14 specs):
+  - CSRF handshake: token issued, cookie non-HttpOnly, rejects missing/mismatched.
+  - Login/logout/me: wrong password, unknown email, session cookie, idle expiry,
+    session rotation (old dies, csrf survives form-open-in-tab invariant),
+    second-browser kill, logout replay rejection.
+  - Login rate limit: 5/min/IP → 429 after budget exhaustion.
+  - All specs boot their own `AppModule` (with `cookieParser` + `setGlobalPrefix`)
+    so each describe has an isolated server/DB.
 - Run: `npm test`. Full gate: `npm run check` (lint + typecheck + test). CI runs
   the same (`ci.yml`).
 - Test files are linted/type-checked via `tsconfig.test.json`.
+- `pretest` script: `DATABASE_URL=file:./test.db prisma db push --skip-generate
+--force-reset` — wipes test.db before every `npm test`.
 
 ## Integration harness (`npm run test:it`)
 
@@ -31,6 +41,9 @@ server (curl-based) and is deliberately separate from vitest.
 - It starts its own server with `ALLOW_OPEN_SIGNUP=true`, so it exercises the
   open-signup path. To test signup-disabled, run a server with
   `ALLOW_OPEN_SIGNUP=false` then invoke against it.
+- The harness carries a shared cookie jar; `obtain_csrf` seeds it with a CSRF
+  token + cookie. All mutating `run()` calls send the CSRF header automatically.
+  Negative-CSRF tests use `check_nocsrf` (no header → 403).
 - Add new scenarios by appending `check_http` / `check_json` / `check_jq` calls
   under the labeled sections in the script.
 

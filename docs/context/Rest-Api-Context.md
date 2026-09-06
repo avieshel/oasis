@@ -7,10 +7,14 @@ Agent guide for the machine-facing REST API (scanner integration via API keys).
 - `src/main.ts`: global prefix `api` (`healthz`/`readyz` excluded), helmet CSP,
   cookie-parser, CORS (dev → `http://localhost:5173`, prod → `CORS_ORIGIN`).
 - `src/app/errors.ts`: `AppError` + `AppExceptionFilter` → `{ error, fields?, detail? }`.
-- `src/app/validation.ts`: Zod `ticketCreateSchema`, `projectKeySchema` — the only
-  route body shape so far.
-- Live routes: `GET /api/healthz`, `GET /api/readyz`. Global `ThrottlerGuard`
-  (100 req/min default).
+- `src/app/validation.ts`: Zod `signupSchema`, `loginSchema`, `ticketCreateSchema`, `projectKeySchema`.
+- Live routes:
+  - `GET /api/healthz`, `GET /api/readyz` — health probes
+  - `POST /api/app/signup` — open signup (gated by `ALLOW_OPEN_SIGNUP`)
+  - `POST /api/app/auth/login`, `POST /api/app/auth/logout`, `GET /api/app/auth/me` — session auth
+  - `GET /api/app/csrf-token` — CSRF double-submit token endpoint
+- Global `ThrottlerGuard` (100 req/min default); login 5/min, signup 10/min per-IP.
+- Global `CsrfGuard` enforces on all state-changing routes (POST/PUT/PATCH/DELETE).
 
 ## Planned surface
 
