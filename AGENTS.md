@@ -54,7 +54,8 @@ day-to-day changes.
   then runs lint-staged (eslint --fix + prettier) on staged files. Never weaken
   or bypass this hook.
 - Commits: small, scoped, imperative subject ("add ticket create endpoint",
-  not "added stuff").
+  not "added stuff"). Prefer Conventional Commits (`feat:`, `fix:`, `docs:`,
+  `refactor:`, `chore:`, `test:`, etc.) when a type fits.
 
 ## Hard Gates (Enforced by Tooling)
 
