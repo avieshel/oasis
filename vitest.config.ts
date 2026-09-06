@@ -9,5 +9,12 @@ export default defineConfig({
   ],
   test: {
     include: ['test/**/*.spec.ts'],
+    env: {
+      NODE_ENV: 'test',
+      DATABASE_URL: 'file:./test.db',
+      APP_SECRET: 'test-app-secret-32+characters-long!!',
+      ALLOW_OPEN_SIGNUP: 'true',
+      COOKIE_SECURE: 'false',
+    },
   },
 });

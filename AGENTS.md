@@ -6,6 +6,17 @@ See `CONTEXT.md` for the full design context (scope decisions, tenancy model,
 security checklist, open questions). This file is the working agreement for
 day-to-day changes.
 
+## Where to Find What
+
+| Area                                  | Context file                               |
+| ------------------------------------- | ------------------------------------------ |
+| Login/logout & session management     | `docs/context/Identity-Session-Context.md` |
+| Machine-facing REST API (API keys)    | `docs/context/Rest-Api-Context.md`         |
+| Jira Cloud client code                | `docs/context/Jira-Client-Context.md`      |
+| React client (pages, api, components) | `docs/context/UI-Context.md`               |
+| Automated tests                       | `docs/context/Test-Context.md`             |
+| Full design context                   | `CONTEXT.md`                               |
+
 ## Conventions
 
 - TypeScript strict mode. No `any` in new code without justification.
