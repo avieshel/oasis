@@ -66,20 +66,57 @@ kill_server() {
 }
 
 # --- assertion primitive ----------------------------------------------------
+TMP_BODY=$(mktemp)
+COOKIE_JAR=$(mktemp)
+CSRF_TOKEN=""
+
+# obtain a fresh CSRF token (also seeds the cookie jar used by `run`)
+obtain_csrf() {
+  CSRF_TOKEN=$(curl -s -c "$COOKIE_JAR" "$BASE_URL/api/app/csrf-token" |
+    python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+}
+
 # run <method> <path> [json_body] -> sets RESP_CODE, RESP_BODY
+# uses the shared cookie jar and attaches the CSRF header for mutating calls
 run() {
+  local method=$1 path=$2 body="${3:-}"
+  local url="$BASE_URL$path"
+  local -a curl_args=(-s -o "$TMP_BODY" -w '%{http_code}' -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X "$method" "$url")
+  case "$method" in
+    POST|PUT|PATCH|DELETE) curl_args+=(-H "x-csrf-token: $CSRF_TOKEN") ;;
+  esac
+  if [ -n "$body" ]; then
+    curl_args+=(-H "Content-Type: application/json" -d "$body")
+  fi
+  RESP_CODE=$(curl "${curl_args[@]}")
+  RESP_BODY=$(cat "$TMP_BODY" 2>/dev/null)
+}
+
+# run_nocsrf <method> <path> [json_body] - like run but without the CSRF header (for negative tests)
+run_nocsrf() {
   local method=$1 path=$2 body="${3:-}"
   local url="$BASE_URL$path"
   RESP_CODE=$(curl -s -o "$TMP_BODY" -w '%{http_code}' -X "$method" "$url" \
     ${body:+-H "Content-Type: application/json" -d "$body"})
   RESP_BODY=$(cat "$TMP_BODY" 2>/dev/null)
 }
-TMP_BODY=$(mktemp)
 
 # check_http <label> <method> <path> <expected_status> [json_body]
 check_http() {
   local label=$1 method=$2 path=$3 want=$4 body="${5:-}"
   run "$method" "$path" "$body"
+  if [ "$RESP_CODE" = "$want" ]; then
+    ok "PASS|$label|got $RESP_CODE"
+  else
+    bad "FAIL|$label|expected $want got $RESP_CODE|$RESP_BODY"
+  fi
+}
+
+# check_nocsrf <label> <method> <path> <expected_status> [json_body]
+# deliberately omits the CSRF header (mutating calls should be rejected with 403)
+check_nocsrf() {
+  local label=$1 method=$2 path=$3 want=$4 body="${5:-}"
+  run_nocsrf "$method" "$path" "$body"
   if [ "$RESP_CODE" = "$want" ]; then
     ok "PASS|$label|got $RESP_CODE"
   else
@@ -183,6 +220,15 @@ main() {
   check_json "readyz ok" GET /readyz 200 .status ok
 
   echo ""
+  echo "--- csrf handshake ---"
+  obtain_csrf
+  if [ -n "$CSRF_TOKEN" ]; then
+    ok "PASS|GET /api/app/csrf-token issues a token|got $CSRF_TOKEN"
+  else
+    bad "FAIL|GET /api/app/csrf-token issues a token|empty body: $RESP_BODY"
+  fi
+
+  echo ""
   echo "--- signup (open) ---"
   # (server started with ALLOW_OPEN_SIGNUP=true)
   check_jq "signup creates tenant+user" POST /api/app/signup 201 '.user.email and .user.tenantId' \
@@ -197,6 +243,22 @@ main() {
     "{\"email\":\"not-an-email\",\"password\":\"password123\"}"
   check_json "malformed json -> HTTP_ERROR (400)" POST /api/app/signup 400 .error HTTP_ERROR \
     "not-json{}"
+
+  echo ""
+  echo "--- auth ---"
+  check_nocsrf "login without csrf -> 403" POST /api/app/auth/login 403 \
+    "{\"email\":\"$email\",\"password\":\"password123\"}"
+  check_nocsrf "signup without csrf -> 403" POST /api/app/signup 403 \
+    "{\"email\":\"noc${RANDOM}@example.com\",\"password\":\"password123\"}"
+  check_json "login wrong password -> INVALID_CREDENTIALS" POST /api/app/auth/login 401 .error INVALID_CREDENTIALS \
+    "{\"email\":\"$email\",\"password\":\"wrongpass\"}"
+  check_json "login unknown email -> INVALID_CREDENTIALS (same generic error)" POST /api/app/auth/login 401 .error INVALID_CREDENTIALS \
+    "{\"email\":\"ghost${RANDOM}@example.com\",\"password\":\"password123\"}"
+  check_json "login ok sets HttpOnly session" POST /api/app/auth/login 200 .user.email "$email" \
+    "{\"email\":\"$email\",\"password\":\"password123\"}"
+  check_json "me returns the session user" GET /api/app/auth/me 200 .user.email "$email"
+  check_http "logout ok" POST /api/app/auth/logout 200
+  check_json "me after logout -> UNAUTHORIZED" GET /api/app/auth/me 401 .error UNAUTHORIZED
 
   echo ""
   echo "--- unknown routes ---"

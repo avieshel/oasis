@@ -14,6 +14,13 @@ export const signupSchema = z.object({
 
 export type SignupInput = z.infer<typeof signupSchema>;
 
+export const loginSchema = z.object({
+  email: z.string().email().max(255),
+  password: z.string().min(1).max(MAX_PASSWORD_LENGTH),
+});
+
+export type LoginInput = z.infer<typeof loginSchema>;
+
 export const projectKeySchema = z
   .string()
   .min(1)

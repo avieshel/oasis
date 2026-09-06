@@ -14,6 +14,7 @@
     "lint": "eslint src/ test/ client/src/ client/vite.config.ts && prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"client/src/**/*.{ts,tsx}\" \"*.md\" \"docs/**/*.md\"",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p client/tsconfig.json --noEmit",
     "test": "vitest run",
+    "pretest": "DATABASE_URL=file:./test.db prisma db push --skip-generate --force-reset",
     "check": "npm run lint && npm run typecheck && npm test",
     "test:it": "bash scripts/integration-test.sh",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"client/src/**/*.{ts,tsx}\" \"client/vite.config.ts\" \"*.md\" \"docs/**/*.md\"",

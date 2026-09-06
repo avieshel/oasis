@@ -15,6 +15,9 @@ export default defineConfig({
       APP_SECRET: 'test-app-secret-32+characters-long!!',
       ALLOW_OPEN_SIGNUP: 'true',
       COOKIE_SECURE: 'false',
+      RATE_LIMIT_GLOBAL_LIMIT: '10000',
+      RATE_LIMIT_SIGNUP_LIMIT: '10000',
+      RATE_LIMIT_LOGIN_LIMIT: '100',
     },
   },
 });

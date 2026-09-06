@@ -17,6 +17,8 @@ export const appConfigSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   JIRA_CACHE_TTL_MS: z.coerce.number().int().positive().default(30000),
+  SESSION_IDLE_TTL_MS: z.coerce.number().int().positive().optional(),
+  SESSION_ABSOLUTE_TTL_MS: z.coerce.number().int().positive().optional(),
   CORS_ORIGIN: z.string().optional(),
 
   RATE_LIMIT_GLOBAL_TTL_MS: z.coerce.number().int().positive().optional(),
@@ -89,6 +91,8 @@ export function loadConfig(): AppConfig {
     ALLOW_OPEN_SIGNUP: process.env.ALLOW_OPEN_SIGNUP,
     COOKIE_SECURE: process.env.COOKIE_SECURE,
     JIRA_CACHE_TTL_MS: process.env.JIRA_CACHE_TTL_MS,
+    SESSION_IDLE_TTL_MS: process.env.SESSION_IDLE_TTL_MS,
+    SESSION_ABSOLUTE_TTL_MS: process.env.SESSION_ABSOLUTE_TTL_MS,
     CORS_ORIGIN: process.env.CORS_ORIGIN,
   });
 }

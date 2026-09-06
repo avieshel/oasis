@@ -8,6 +8,8 @@ import { getRateLimitConfig } from './config/rate-limits';
 import { PrismaService } from './infra/db';
 import { HealthModule } from './modules/health/health.module';
 import { UsersModule } from './modules/users/users.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { CsrfGuard } from './modules/auth/csrf.guard';
 import { AppExceptionFilter } from './app/errors';
 
 @Module({
@@ -37,12 +39,17 @@ import { AppExceptionFilter } from './app/errors';
     }),
     HealthModule,
     UsersModule,
+    AuthModule,
   ],
   providers: [
     PrismaService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: CsrfGuard,
     },
     {
       provide: APP_FILTER,

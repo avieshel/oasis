@@ -1,8 +1,12 @@
 import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
 import { UserService } from './user.service';
 import { SignupDisabledError } from '../../app/errors';
 import { signupSchema } from '../../app/validation';
+import { getRateLimitConfig } from '../../config/rate-limits';
+
+const SIGNUP_RATE_LIMIT = getRateLimitConfig().signup;
 
 @Controller('app')
 export class UserController {
@@ -13,6 +17,7 @@ export class UserController {
 
   @Post('signup')
   @HttpCode(HttpStatus.CREATED)
+  @Throttle({ default: SIGNUP_RATE_LIMIT })
   async signup(@Body() rawBody: unknown) {
     const body = signupSchema.parse(rawBody);
 

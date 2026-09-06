@@ -25,6 +25,9 @@ model users {
 model sessions {
   id                   String   @id @default(cuid())
   user_id              String
+  token_hash           String   @unique
+  ip                   String?
+  user_agent           String?
   created_at           DateTime @default(now())
   last_seen_at         DateTime @default(now())
   expires_idle_at      DateTime
