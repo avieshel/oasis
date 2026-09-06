@@ -31,10 +31,20 @@ day-to-day changes.
   Handlers are thin; business logic lives in services.
 - All repository methods take `tenantId` as the first argument and filter by it
   inside the query — no tenant filtering in handler code.
+- Single source of truth for every "magic string/number": error codes & HTTP
+  statuses live in `src/app/errors/error-codes.ts`; rate-limit defaults live in
+  `src/config/rate-limits.ts` (env-overridable); input bounds (max lengths,
+  password rules) live in `src/app/validation.ts`. Never inline a bare number,
+  `HttpStatus.*` recipe is fine, or a raw error string in handlers — import the
+  constant and keep handler/service code pure of literals.
 
 ## Workflow
 
 - After changes: `npm run check` (lint + typecheck + test).
+- HTTP integration suite: `npm run test:it` (see `docs/context/Test-Context.md`).
+  It starts the server, runs curl assertions, and writes a JSON log to
+  `/tmp/identityhub-integration.json`; re-read the last run without re-running
+  with `npm run test:it -- --read`.
 - Migrations: `npx prisma migrate dev` for dev, `npx prisma migrate deploy` for
   prod-like. Never edit a migration after it's been applied.
 - Secrets: never commit `.env`; ship `.env.example`. Rotate `APP_SECRET` if it
