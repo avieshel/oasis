@@ -2,14 +2,38 @@
 
 Agent guide for the code that talks to Jira Cloud (connect, create tickets, list).
 
-## Current state
+## Current state — implemented and tested
 
-- Coded: `jira.client.ts` (fetch wrapper: timeout, 401/403/404/429 mapping),
-  `jira.repository.ts` (tenant-scoped, sealed persistence), and the
-  `jira:smoke` test-connection script (`src/scripts/jira-connect-smoke.ts`).
-  Prisma models `jira_connections` and `tickets_cache` exist;
-  `sealSecret`/`openSecret` (AES-256-GCM keyed by `APP_SECRET`) handles
-  at-rest tokens.
+- `jira.client.ts` — fetch wrapper: 10s timeout, 401/403/404/429 error mapping;
+  `getMyself`, `listProjects`, `createIssue` (ADF body), `searchByJql`.
+- `jira.repository.ts` — tenant-scoped, sealed persistence; `findByUser`,
+  `deleteByUser`, `upsertApiTokenConnection`.
+- `jira.service.ts` + `jira.controller.ts` (prefix: `app/jira`, session-guarded).
+  6 endpoints:
+  - `POST /connect` (+ `DELETE /connect`) — validate via `getMyself`, store
+    sealed AES-256-GCM token. `@Throttle` = `jiraConnect`.
+  - `GET /status` — `{ connected, siteUrl, email, mode }`.
+  - `GET /projects` — raw list from `/rest/api/3/project/search`.
+    `@Throttle` = `jiraProjects`. **No `@Throttle`-set on create/recent → they
+    fall to the global default, even though `ticketCreateUi`/`ticketCreateApi`
+    limits exist in `rate-limits.ts` (see pending note below).**
+  - `POST /tickets` (201) — creates a **Task** with ADF description and label
+    `identityhub-finding`; pre-checks project membership via
+    `assertProjectExists` → 404 `PROJECT_NOT_FOUND`. Returns `{ key, url }`
+    where `url = {site}/browse/{key}`.
+  - `GET /tickets/recent?project_key=…` — **live JQL**
+    `project = "<KEY>" AND labels = "identityhub-finding" ORDER BY created
+DESC`, maxResults 10. Returns `[{ key, title, url, createdAt }]`.
+    **Does NOT read/write `tickets_cache`** (minimal-pass decision — see
+    pending note below).
+- `jira.adf.ts` — ADF document builder (doc/paragraph/text, newline-split).
+- `jira.module.ts` (imports AuthModule; exports `JiraService`, `JiraRepository`).
+  Registered in `app.module.ts`.
+- UI: `client/src/pages/JiraPage.tsx` (connect form, project select, create
+  form, recent list, disconnect) at route `/jira`, linked from `HomePage.tsx`.
+  `client/src/api/client.ts` `apiRequest` now supports `DELETE`.
+- Tests: `test/jira.spec.ts` (7 tests, fetch-stubbed against Jira).
+- `jira:smoke` script + `local/jira-credentials.example.json` (see below).
 - Jira **Cloud only** — no self-hosted Server support.
 
 ## Connection model (locked — CONTEXT.md §16.5)
@@ -23,15 +47,14 @@ Agent guide for the code that talks to Jira Cloud (connect, create tickets, list
 - Automation (REST/API keys) rides the API-key owner's connection; an
   autonomous process is a dedicated bot/svc user with its own link + key.
 
-## Planned surface (`src/modules/jira/`)
+## Pending (explicitly deferred to keep the minimal slice green)
 
-- `jira.module.ts`
-- `jira.routes.ts` — `/app/jira/connect`, disconnect, status, list-projects
-- `jira.service.ts` — connect/disconnect, list projects, create ticket, list
-  recent app-created tickets
-- `jira.adf.ts` — Atlassian Document Format (ADF) body builder
-- `jira.client.ts` — `fetch` wrapper: timeouts, retries, error mapping (done)
-- `jira.oauth.ts` — **deferred** (OAuth 3LO, not in demo scope)
+- `tickets_cache` read model + async JQL reconcile (recent list currently hits
+  live Jira; cache schema exists in Prisma, unused).
+- Applying `ticketCreateUi`/`ticketCreateApi` throttles to the create/recent
+  routes (config exists in `rate-limits.ts`, routes currently use the global
+  default).
+- `jira.oauth.ts` — OAuth 3LO, **deferred** (not in demo scope).
 
 ## Test connection (secrets never reach the LLM)
 
@@ -50,8 +73,7 @@ Agent guide for the code that talks to Jira Cloud (connect, create tickets, list
   sealed (AES-256-GCM) in `jira_connections`** via `JiraRepository` — the same
   path the connect UI will use.
 - Output is safe-only: site host, account id/name, project keys, and a
-  DB round-trip flag. Never the email or token. The scaffolded `JiraModule`
-  routes are next.
+  DB round-trip flag. Never the email or token.
 
 ## Rules
 

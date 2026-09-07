@@ -699,14 +699,22 @@ static assets and served by Nest (`useStaticAssets`), dev via Vite proxy
 core (§7.1 invariants); Jira features (4–7) are modeled for a single user and
 "just work" once identity is airtight.**
 
-1. Repo skeleton: NestJS app + Prisma + config (zod env) + crypto + logging +
+Slices 1–6 are **implemented, tested, and committed** (as of the "add Jira
+connect, project list, and ticket create/read flow" commit). Remaining:
+
+1. ✅ Repo skeleton: NestJS app + Prisma + config (zod env) + crypto + logging +
    `client/` Vite scaffold (proxy wired, placeholder page).
-2. Tenants + users + signup (mode = open for demo).
-3. **Identity core**: session manager (rotation, idle+absolute), login/logout,
+2. ✅ Tenants + users + signup (mode = open for demo).
+3. ✅ **Identity core**: session manager (rotation, idle+absolute), login/logout,
    CSRF, rate-limit, helmet — proving every §7.1 invariant. React pages for
    login/signup wired against it.
-4. Jira client + connect (API-token path first; OAuth second).
-5. Create-ticket API + React form + ADF (writes `tickets_cache` on success).
-6. Recent-tickets view (read model + async JQL reconcile).
-7. API keys + REST `POST /api/v1/tickets` (public contract).
-8. README + design-decisions doc.
+4. ✅ Jira client + connect (API-token path; OAuth **deferred**).
+5. ✅ Create-ticket API + React form + ADF. _Deviation from original plan:
+   does **not** write `tickets_cache` on success in the minimal pass._
+6. ✅/part. Recent-tickets view is in (live JQL). _Deferred:_ cache read model
+   - async JQL reconcile (`tickets_cache` schema exists, unused).
+7. ⏳ **Next slice**: apply the `ticketCreateUi`/`ticketCreateApi` throttles to
+   the create/recent routes (currently global default), then API keys + REST
+   `POST /api/v1/tickets` (public contract).
+8. ⏳ README + design-decisions doc; reviewer distribution via Docker image
+   (tracked as GitHub issue #11).
