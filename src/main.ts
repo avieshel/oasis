@@ -46,6 +46,10 @@ async function bootstrap(): Promise<void> {
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
+          // React/Vite inject inline scripts and styles in dev mode via its
+          // HMR client; in prod the built bundle still emits some inline
+          // style tags. 'unsafe-inline' keeps both modes working without a
+          // per-build nonce.
           scriptSrc: ["'self'", "'unsafe-inline'"],
           styleSrc: ["'self'", "'unsafe-inline'"],
         },
