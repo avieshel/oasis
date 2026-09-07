@@ -60,3 +60,7 @@ export async function disconnectKeyJira(
 export async function keyJiraStatus(id: string): Promise<JiraConnectionState> {
   return apiRequest<JiraConnectionState>('GET', `/api-keys/${id}/jira/status`);
 }
+
+export async function testKeyJira(id: string): Promise<JiraConnectionState> {
+  return apiRequest<JiraConnectionState>('POST', `/api-keys/${id}/jira/test`);
+}

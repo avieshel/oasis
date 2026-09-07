@@ -201,6 +201,32 @@ export class ApiKeysController {
     );
   }
 
+  @Post(':id/jira/test')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: CONNECT_RATE_LIMIT })
+  @ApiOperation({
+    summary: 'Test an API key’s live Jira connection',
+    description:
+      'Performs a live `myself` round-trip with the stored credentials to ' +
+      'confirm the connection still works. Emits a jira_connection_test ' +
+      'audit event.',
+  })
+  @ApiParam({ name: 'id', schema: { type: 'string' }, description: 'Key id' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Connection state' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Unknown key id' })
+  async testKeyJira(
+    @CurrentTenantId() tenantId: string,
+    @Param('id') id: string,
+    @Req() req: RequestWithSession,
+  ) {
+    await this.apiKeysService.assertOwned(tenantId, id);
+    return this.jiraService.testConnection(
+      tenantId,
+      { kind: 'api_key', apiKeyId: id },
+      auditContext(req),
+    );
+  }
+
   @Get(':id/jira/status')
   @ApiOperation({
     summary: 'Jira connection status for an API key',

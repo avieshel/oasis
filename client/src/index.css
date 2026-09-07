@@ -119,6 +119,62 @@ body {
   background: #9333ea;
 }
 
+.badge-connected {
+  background: #1a7f37;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.stat-card {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.token-reveal {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.token-reveal code {
+  padding: 4px 8px;
+  background: #1a1a1a;
+  color: #7ee787;
+  border-radius: 6px;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.token-reveal button {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
 section {
   margin-top: 32px;
 }
@@ -235,4 +291,48 @@ button {
 button:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.btn-danger {
+  background: #b42318;
+  border-color: #b42318;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  padding: 24px;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 620px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.key-display {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.key-value {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  word-break: break-all;
+}
+
+.admin-table .badge {
+  margin-left: 8px;
+  vertical-align: middle;
 }
