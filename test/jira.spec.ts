@@ -1,4 +1,5 @@
 import type { Server } from 'node:http';
+import { PrismaClient } from '@prisma/client';
 import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
@@ -8,6 +9,7 @@ import { AppModule } from '../src/app.module';
 const PASSWORD = 'password123';
 const SITE_URL = 'https://acme.atlassian.net';
 const CONNECT_URL = `${SITE_URL}/rest/api/3/myself`;
+const SERVER_INFO_URL = `${SITE_URL}/rest/api/3/serverInfo`;
 const PROJECTS_URL = `${SITE_URL}/rest/api/3/project/search?maxResults=100`;
 const ISSUE_URL = `${SITE_URL}/rest/api/3/issue`;
 
@@ -54,6 +56,14 @@ async function fetchCsrf(
 }
 
 type FetchHandler = (url: string, init?: RequestInit) => Response;
+
+function serverInfoResponse(): Response {
+  return jsonResponse({
+    cloudId: 'cloud-abc',
+    deploymentType: 'Cloud',
+    version: '1001.0.0',
+  });
+}
 
 function mockFetch(handler: FetchHandler): void {
   vi.stubGlobal(
@@ -130,6 +140,9 @@ describe('jira :: api token connection', () => {
           displayName: 'Ada Lovelace',
         });
       }
+      if (url === SERVER_INFO_URL) {
+        return serverInfoResponse();
+      }
       throw new Error(`unexpected url ${url}`);
     });
 
@@ -143,6 +156,14 @@ describe('jira :: api token connection', () => {
       true,
     );
     expect(bodyOf<{ siteUrl: string }>(res).siteUrl).toBe(SITE_URL);
+
+    const prisma = new PrismaClient();
+    const row = await prisma.jira_connections.findFirst({
+      where: { site_url: SITE_URL, email: 'ada@example.com' },
+      select: { cloud_id: true },
+    });
+    expect(row?.cloud_id).toBe('cloud-abc');
+    await prisma.$disconnect();
     resetFetch();
   });
 
@@ -191,6 +212,9 @@ describe('jira :: projects, tickets, recent', () => {
           displayName: 'Ada',
         });
       }
+      if (url === SERVER_INFO_URL) {
+        return serverInfoResponse();
+      }
       throw new Error(`unexpected url ${url}`);
     });
     await request(server)
@@ -228,6 +252,81 @@ describe('jira :: projects, tickets, recent', () => {
       .set('x-csrf-token', csrfTokenValue)
       .expect(200);
     expect(bodyOf<Array<{ key: string }>>(res)[0].key).toBe('MYPRJ');
+    resetFetch();
+  });
+
+  it('serves cached projects without a second Jira call', async () => {
+    mockFetch(() => {
+      throw new Error('must not call Jira for a cached project list');
+    });
+    const res = await request(server)
+      .get('/api/app/jira/projects')
+      .set('Cookie', authedJar)
+      .set('x-csrf-token', csrfTokenValue)
+      .expect(200);
+    expect(bodyOf<Array<{ key: string }>>(res)[0].key).toBe('MYPRJ');
+    resetFetch();
+  });
+
+  it('retries a transient 503 on recent-ticket refresh', async () => {
+    let searchCalls = 0;
+    mockFetch((url) => {
+      const parsed = new URL(url);
+      if (parsed.pathname.endsWith('/rest/api/3/search/jql')) {
+        searchCalls += 1;
+        if (searchCalls === 1) {
+          return jsonResponse({ errorMessages: ['temporarily down'] }, 503);
+        }
+        return jsonResponse({
+          issues: [
+            {
+              key: 'MYPRJ-5',
+              fields: {
+                summary: 'After retry',
+                created: '2026-01-05T10:00:00.000Z',
+              },
+            },
+          ],
+        });
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+
+    const res = await request(server)
+      .get('/api/app/jira/tickets/recent?project_key=MYPRJ&refresh=true')
+      .set('Cookie', authedJar)
+      .set('x-csrf-token', csrfTokenValue)
+      .expect(200);
+    expect(searchCalls).toBe(2);
+    expect(bodyOf<Array<{ key: string }>>(res)[0].key).toBe('MYPRJ-5');
+    resetFetch();
+  });
+
+  it('does not retry a failing ticket create', async () => {
+    let createCalls = 0;
+    mockFetch((url, init) => {
+      if (url === PROJECTS_URL) {
+        return jsonResponse({ values: [{ key: 'MYPRJ', name: 'My Project' }] });
+      }
+      if (url === ISSUE_URL && init?.method === 'POST') {
+        createCalls += 1;
+        return jsonResponse({ errorMessages: ['boom'] }, 503);
+      }
+      throw new Error(`unexpected url ${url} ${init?.method ?? ''}`);
+    });
+
+    const res = await request(server)
+      .post('/api/app/jira/tickets')
+      .set('Cookie', authedJar)
+      .set('x-csrf-token', csrfTokenValue)
+      .send({
+        project_key: 'MYPRJ',
+        title: 'Never retried',
+        description: 'x',
+      })
+      .expect(502);
+    expect(createCalls).toBe(1);
+    expect(bodyOf<ErrorBody>(res).error).toBe('UPSTREAM_ERROR');
     resetFetch();
   });
 
@@ -347,6 +446,9 @@ describe('jira :: projects, tickets, recent', () => {
           active: true,
           displayName: 'Other',
         });
+      }
+      if (url === SERVER_INFO_URL) {
+        return serverInfoResponse();
       }
       const parsed = new URL(url);
       if (parsed.pathname.endsWith('/rest/api/3/search/jql')) {

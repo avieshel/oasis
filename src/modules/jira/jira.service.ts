@@ -38,9 +38,17 @@ export interface JiraAuditContext {
   userAgent?: string | null;
 }
 
+const JIRA_PROJECTS_CACHE_TTL_MS = 60_000;
+
+interface ProjectsCacheEntry {
+  expiresAt: number;
+  projects: JiraProjectSummary[];
+}
+
 @Injectable()
 export class JiraService {
   private readonly logger = new Logger(JiraService.name);
+  private readonly projectsCache = new Map<string, ProjectsCacheEntry>();
 
   constructor(
     private readonly jiraRepository: JiraRepository,
@@ -92,13 +100,27 @@ export class JiraService {
     const probe = new JiraClient(input);
     const myself = await probe.getMyself();
 
+    let cloudId: string | null = null;
+    try {
+      const info = await probe.serverInfo();
+      cloudId = info.cloudId || null;
+    } catch (error) {
+      this.logger.warn(
+        `unable to read cloud id for ${probe.origin}: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+    }
+
     const sealed = sealSecret(input.apiToken, this.appSecret());
     await this.jiraRepository.upsertApiTokenConnection(tenantId, userId, {
       siteUrl: probe.origin,
       email: input.email,
       apiTokenCipher: sealed.cipher,
       apiTokenNonce: sealed.nonce,
+      cloudId,
     });
+    this.projectsCache.delete(this.cacheKey(tenantId, userId));
 
     await this.audit.write({
       tenantId,
@@ -125,6 +147,7 @@ export class JiraService {
     ctx: JiraAuditContext,
   ): Promise<{ status: string }> {
     await this.jiraRepository.deleteByUser(tenantId, userId);
+    this.projectsCache.delete(this.cacheKey(tenantId, userId));
     await this.audit.write({
       tenantId,
       userId,
@@ -158,8 +181,23 @@ export class JiraService {
     tenantId: string,
     userId: string,
   ): Promise<JiraProjectSummary[]> {
+    const key = this.cacheKey(tenantId, userId);
+    const cached = this.projectsCache.get(key);
+    if (cached !== undefined && cached.expiresAt > Date.now()) {
+      return cached.projects;
+    }
+
     const client = await this.clientFor(tenantId, userId);
-    return client.listProjects();
+    const projects = await client.listProjects();
+    this.projectsCache.set(key, {
+      expiresAt: Date.now() + JIRA_PROJECTS_CACHE_TTL_MS,
+      projects,
+    });
+    return projects;
+  }
+
+  private cacheKey(tenantId: string, userId: string): string {
+    return `${tenantId}:${userId}`;
   }
 
   async createTicket(

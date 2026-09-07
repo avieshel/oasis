@@ -23,6 +23,12 @@ export interface JiraProjectSummary {
   style?: string;
 }
 
+export interface JiraServerInfo {
+  cloudId: string;
+  deploymentType: string;
+  version: string;
+}
+
 export interface JiraCreatedIssue {
   id: string;
   key: string;
@@ -43,7 +49,32 @@ export interface JiraClientOptions {
   apiToken: string;
 }
 
-const JIRA_REQUEST_TIMEOUT_MS = 10_000;
+const JIRA_CONNECT_TIMEOUT_MS = 10_000;
+const JIRA_RESPONSE_TIMEOUT_MS = 30_000;
+const JIRA_MAX_RETRIES = 2;
+const JIRA_RETRY_BASE_DELAY_MS = 100;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+class JiraRetryableUpstreamError extends UpstreamError {
+  constructor(detail: string) {
+    super(detail);
+    this.name = 'JiraRetryableUpstreamError';
+  }
+}
+
+function isRetryableError(error: unknown): error is JiraRetryableUpstreamError {
+  return error instanceof JiraRetryableUpstreamError;
+}
+
+function jiraNetworkError(error: unknown): JiraRetryableUpstreamError {
+  if (error instanceof Error && error.name === 'AbortError') {
+    return new JiraRetryableUpstreamError('Jira request timed out');
+  }
+  return new JiraRetryableUpstreamError('Jira request failed');
+}
 
 function normalizeSiteUrl(siteUrl: string): string {
   const url = new URL(siteUrl);
@@ -75,11 +106,30 @@ export class JiraClient {
     method: string = 'GET',
     body?: unknown,
   ): Promise<T> {
-    const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      JIRA_REQUEST_TIMEOUT_MS,
-    );
+    const retryable = method === 'GET';
+    const attempts = retryable ? 1 + JIRA_MAX_RETRIES : 1;
+    let lastError: UpstreamError | undefined;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (attempt > 0) {
+        await sleep(JIRA_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+      }
+      try {
+        return await this.attemptCall<T>(path, method, body);
+      } catch (error) {
+        if (!retryable || !isRetryableError(error)) {
+          throw error;
+        }
+        lastError = error;
+      }
+    }
+    throw lastError ?? new UpstreamError('Jira request failed');
+  }
+
+  private async attemptCall<T>(
+    path: string,
+    method: string,
+    body?: unknown,
+  ): Promise<T> {
     let response: Response;
     try {
       response = await fetch(`${this.siteUrl}${path}`, {
@@ -90,17 +140,29 @@ export class JiraClient {
           ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
-        signal: controller.signal,
+        signal: AbortSignal.timeout(JIRA_CONNECT_TIMEOUT_MS),
       });
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new UpstreamError('Jira request timed out');
-      }
-      throw new UpstreamError('Jira request failed');
-    } finally {
-      clearTimeout(timeout);
+      throw jiraNetworkError(error);
     }
+    return this.handleResponse<T>(response);
+  }
 
+  private async bodyText(response: Response): Promise<string> {
+    const timer = setTimeout(() => {
+      void response.body?.cancel();
+    }, JIRA_RESPONSE_TIMEOUT_MS);
+    try {
+      return await response.text();
+    } catch {
+      throw new JiraRetryableUpstreamError('Jira response timed out');
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async handleResponse<T>(response: Response): Promise<T> {
+    const body = await this.bodyText(response);
     if (response.status === 429) {
       const raw = response.headers.get('retry-after');
       const retryAfter = raw === null ? 0 : Number(raw);
@@ -110,7 +172,7 @@ export class JiraClient {
       );
     }
 
-    const detail = response.ok ? undefined : await this.errorDetail(response);
+    const detail = this.errorDetail(response, body);
     if (response.status === 401) {
       throw new UnauthorizedError(detail ?? 'Jira rejected the credentials');
     }
@@ -123,18 +185,30 @@ export class JiraClient {
         detail ?? 'Jira resource not found',
       );
     }
+    if (
+      response.status === 502 ||
+      response.status === 503 ||
+      response.status === 504
+    ) {
+      throw new JiraRetryableUpstreamError(
+        detail ?? `Jira API error (HTTP ${response.status})`,
+      );
+    }
     if (!response.ok) {
       throw new UpstreamError(
         detail ?? `Jira API error (HTTP ${response.status})`,
       );
     }
-
-    return (await response.json()) as T;
+    try {
+      return JSON.parse(body) as T;
+    } catch {
+      throw new JiraRetryableUpstreamError('Jira returned an invalid response');
+    }
   }
 
-  private async errorDetail(response: Response): Promise<string | undefined> {
+  private errorDetail(response: Response, body: string): string | undefined {
     try {
-      const raw = (await response.json()) as {
+      const raw = JSON.parse(body) as {
         errorMessages?: unknown;
         errors?: unknown;
         message?: unknown;
@@ -161,6 +235,10 @@ export class JiraClient {
 
   async getMyself(): Promise<JiraUserSelf> {
     return this.request<JiraUserSelf>('/rest/api/3/myself');
+  }
+
+  async serverInfo(): Promise<JiraServerInfo> {
+    return this.request<JiraServerInfo>('/rest/api/3/serverInfo');
   }
 
   async listProjects(maxResults = 100): Promise<JiraProjectSummary[]> {

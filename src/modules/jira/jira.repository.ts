@@ -33,6 +33,7 @@ export class JiraRepository {
       email: string;
       apiTokenCipher: string;
       apiTokenNonce: string;
+      cloudId: string | null;
     },
   ) {
     return this.prisma.jira_connections.upsert({
@@ -42,6 +43,7 @@ export class JiraRepository {
         mode: 'api_token',
         site_url: data.siteUrl,
         email: data.email,
+        cloud_id: data.cloudId,
         api_token_cipher: data.apiTokenCipher,
         api_token_nonce: data.apiTokenNonce,
         access_token_cipher: null,
@@ -57,6 +59,7 @@ export class JiraRepository {
         mode: 'api_token',
         site_url: data.siteUrl,
         email: data.email,
+        cloud_id: data.cloudId,
         api_token_cipher: data.apiTokenCipher,
         api_token_nonce: data.apiTokenNonce,
       },

@@ -55,6 +55,7 @@ async function main(): Promise<void> {
 
     const client = new JiraClient({ siteUrl, email, apiToken });
     const myself = await client.getMyself();
+    const serverInfo = await client.serverInfo();
     const projects = await client.listProjects();
 
     const siteOrigin = new URL(siteUrl).origin;
@@ -65,6 +66,7 @@ async function main(): Promise<void> {
       email,
       apiTokenCipher: sealed.cipher,
       apiTokenNonce: sealed.nonce,
+      cloudId: serverInfo.cloudId || null,
     });
 
     const stored = await repository.findByUser(user.tenant_id, user.id);
@@ -85,6 +87,7 @@ async function main(): Promise<void> {
         projects: projects.map((p) => p.key),
         projectCount: projects.length,
         mode: 'api_token',
+        cloudId: serverInfo.cloudId || null,
         storedInDb: roundTripOk,
       },
       roundTripOk
