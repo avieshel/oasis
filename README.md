@@ -7,9 +7,24 @@ from a UI and a REST API. NestJS + Prisma (SQLite) + Vite/React SPA.
 
 ```sh
 docker compose up -d --build         # build + start on http://localhost:3000
-docker compose run --rm seed          # optional: 2 demo tenants + users + fake Jira tickets
-docker compose down && rm -rf ./data # wipe the database and start fresh
+docker compose run --rm seed          # optional: seed demo tenants + users + fake Jira tickets
+                                     #   (--rm only removes the one-off container, NOT the data)
+docker compose down && rm -rf ./data # stop, then wipe the database entirely
 ```
+
+### Data persistence
+
+The app stores its SQLite database on your host at `./data/app.db` (bind-mounted
+into the container). How the commands above affect it:
+
+| Command                                | What happens                                                                                                                        |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `docker compose up`                    | Data from previous runs persists.                                                                                                   |
+| `docker compose down`                  | Stops and removes the container, but **keeps** `./data/app.db`.                                                                     |
+| `docker compose down && rm -rf ./data` | Stops, then deletes the database — the next `up` starts from a fresh empty DB.                                                      |
+| `docker compose run --rm seed`         | Seeds demo data into the existing DB. The `--rm` only cleans up the one-off container afterwards — it does **not** remove any data. |
+
+`docker compose down` alone keeps your data; only `rm -rf ./data` actually wipes it.
 
 Open:
 
