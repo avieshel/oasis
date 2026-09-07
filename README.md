@@ -32,15 +32,16 @@ so any local SQLite client can open it directly while the app is running
 
 ### DataGrip (or any JDBC client)
 
-1. **File → New → Data Source → SQLite.**
-2. Set **File** to `./data/app.db` (relative to the repo root) or its
-   absolute path.
-3. The JDBC URL is shown as:
+1. From the repo root, get the absolute path of the SQLite file:
+   ```sh
+   realpath data/app.db
+   # prints e.g. /home/you/projects/identityhub-jira/data/app.db
    ```
-   jdbc:sqlite:<absolute-path-to-repo>/data/app.db
-   ```
-4. Test connection → OK. You can browse every table and run ad-hoc
-   `SELECT`s; writes from the app will appear live.
+2. **File → New → Data Source → SQLite** in DataGrip and paste that
+   absolute path into **File**.
+3. DataGrip auto-fills the JDBC URL from the file path. You can browse
+   every table and run ad-hoc `SELECT`s; writes from the app will appear
+   live.
 
 ### Other tools
 
