@@ -12,6 +12,7 @@ export enum ErrorCode {
   CSRF_INVALID = 'CSRF_INVALID',
   SIGNUP_DISABLED = 'SIGNUP_DISABLED',
   EMAIL_TAKEN = 'EMAIL_TAKEN',
+  SLUG_TAKEN = 'SLUG_TAKEN',
   INVALID_CREDENTIALS = 'INVALID_CREDENTIALS',
   TOKEN_EXPIRED = 'TOKEN_EXPIRED',
   PERMISSION_DENIED = 'PERMISSION_DENIED',
@@ -92,6 +93,11 @@ export const ERROR_DEFINITIONS: Readonly<Record<ErrorCode, ErrorDefinition>> = {
     code: ErrorCode.EMAIL_TAKEN,
     statusCode: 400,
     defaultMessage: 'Email already registered',
+  },
+  [ErrorCode.SLUG_TAKEN]: {
+    code: ErrorCode.SLUG_TAKEN,
+    statusCode: 409,
+    defaultMessage: 'Tenant slug already in use',
   },
   [ErrorCode.INVALID_CREDENTIALS]: {
     code: ErrorCode.INVALID_CREDENTIALS,

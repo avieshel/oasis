@@ -11,6 +11,12 @@ export const AuditAction = {
   JIRA_TICKET_CREATE: 'jira_ticket_create',
   API_KEY_CREATE: 'api_key_create',
   API_KEY_REVOKE: 'api_key_revoke',
+  ADMIN_TENANT_CREATE: 'admin_tenant_create',
+  ADMIN_TENANT_UPDATE: 'admin_tenant_update',
+  ADMIN_TENANT_DELETE: 'admin_tenant_delete',
+  ADMIN_USER_CREATE: 'admin_user_create',
+  ADMIN_USER_UPDATE: 'admin_user_update',
+  ADMIN_USER_DELETE: 'admin_user_delete',
 } as const;
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];

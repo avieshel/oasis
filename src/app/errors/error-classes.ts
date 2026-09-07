@@ -107,6 +107,12 @@ export class EmailTakenError extends AppError {
   }
 }
 
+export class SlugTakenError extends AppError {
+  constructor() {
+    super(ErrorCode.SLUG_TAKEN);
+  }
+}
+
 export class InvalidCredentialsError extends AppError {
   constructor() {
     super(ErrorCode.INVALID_CREDENTIALS);

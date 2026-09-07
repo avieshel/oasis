@@ -12,6 +12,10 @@ export const appConfigSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
+  ALLOW_ADMIN: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
   COOKIE_SECURE: z
     .enum(['true', 'false'])
     .default('false')
@@ -89,6 +93,7 @@ export function loadConfig(): AppConfig {
     DATABASE_URL: process.env.DATABASE_URL,
     APP_SECRET: process.env.APP_SECRET,
     ALLOW_OPEN_SIGNUP: process.env.ALLOW_OPEN_SIGNUP,
+    ALLOW_ADMIN: process.env.ALLOW_ADMIN,
     COOKIE_SECURE: process.env.COOKIE_SECURE,
     JIRA_CACHE_TTL_MS: process.env.JIRA_CACHE_TTL_MS,
     SESSION_IDLE_TTL_MS: process.env.SESSION_IDLE_TTL_MS,

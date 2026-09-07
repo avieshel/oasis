@@ -21,6 +21,52 @@ body {
   padding: 48px 24px;
 }
 
+.page-wide {
+  max-width: 980px;
+}
+
+.admin-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 12px;
+}
+
+.admin-table th,
+.admin-table td {
+  border: 1px solid #ddd;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 14px;
+}
+
+.admin-table th {
+  background: #eee;
+}
+
+section {
+  margin-top: 32px;
+}
+
+.inline-form {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: none;
+}
+
+.inline-form input {
+  font-size: 14px;
+}
+
+select {
+  padding: 8px;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
 .ok {
   color: #1a7f37;
   font-weight: 600;

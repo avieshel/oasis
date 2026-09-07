@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { logout } from '../api/auth';
+import { adminStatus } from '../api/admin';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 
 export function HomePage(): JSX.Element {
@@ -8,6 +9,13 @@ export function HomePage(): JSX.Element {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [adminEnabled, setAdminEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    adminStatus()
+      .then((status) => setAdminEnabled(status.enabled))
+      .catch(() => setAdminEnabled(false));
+  }, []);
 
   if (auth.status === 'anonymous') {
     return <Navigate to="/login" replace />;
@@ -38,7 +46,8 @@ export function HomePage(): JSX.Element {
       <p className="ok">Connected ✓</p>
       {error !== null && <p className="err">{error}</p>}
       <Link to="/jira">Jira integration</Link>{' '}
-      <Link to="/api-keys">API keys</Link>
+      <Link to="/api-keys">API keys</Link>{' '}
+      {adminEnabled === true && <Link to="/admin">Admin</Link>}
       <div>
         <button
           type="button"

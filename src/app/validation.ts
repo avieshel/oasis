@@ -12,6 +12,84 @@ export const MAX_API_KEY_PROJECTS = 50;
 export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_PASSWORD_LENGTH = 128;
 
+export const MAX_TENANT_SLUG_LENGTH = 50;
+export const MAX_TENANT_NAME_LENGTH = 80;
+export const MAX_USER_NAME_LENGTH = 80;
+export const MAX_ENTITY_ID_LENGTH = 64;
+
+export const adminParamSchema = z.object({
+  id: z.string().min(1).max(MAX_ENTITY_ID_LENGTH),
+});
+
+function isValidTenantSlug(value: string): boolean {
+  if (value.length === 0) {
+    return false;
+  }
+  let previous = '';
+  for (const char of value) {
+    const isAlnum = /[a-z0-9]/.test(char);
+    const isHyphen = char === '-';
+    if (!isAlnum && !isHyphen) {
+      return false;
+    }
+    if (isHyphen && (previous === '-' || previous === '')) {
+      return false;
+    }
+    previous = char;
+  }
+  return previous !== '-';
+}
+
+export const tenantSlugSchema = z
+  .string()
+  .min(1)
+  .max(MAX_TENANT_SLUG_LENGTH)
+  .refine(isValidTenantSlug, {
+    message:
+      'tenant slug must be lowercase letters/digits separated by single hyphens',
+  });
+
+export const tenantNameSchema = z.string().min(1).max(MAX_TENANT_NAME_LENGTH);
+
+export const tenantCreateSchema = z.object({
+  slug: tenantSlugSchema,
+  name: tenantNameSchema,
+});
+
+export type TenantCreateInput = z.infer<typeof tenantCreateSchema>;
+
+export const tenantUpdateSchema = z.object({
+  slug: tenantSlugSchema.optional(),
+  name: tenantNameSchema.optional(),
+});
+
+export type TenantUpdateInput = z.infer<typeof tenantUpdateSchema>;
+
+export const adminUsersQuerySchema = z.object({
+  tenant_id: z.string().min(1).max(MAX_ENTITY_ID_LENGTH).optional(),
+});
+
+export const userCreateSchema = z.object({
+  tenant_id: z.string().min(1).max(MAX_ENTITY_ID_LENGTH),
+  email: z.string().email().max(255),
+  name: z.string().min(1).max(MAX_USER_NAME_LENGTH).optional(),
+  password: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH),
+});
+
+export type UserCreateInput = z.infer<typeof userCreateSchema>;
+
+export const userUpdateSchema = z.object({
+  email: z.string().email().max(255).optional(),
+  name: z.string().min(1).max(MAX_USER_NAME_LENGTH).optional(),
+  password: z
+    .string()
+    .min(MIN_PASSWORD_LENGTH)
+    .max(MAX_PASSWORD_LENGTH)
+    .optional(),
+});
+
+export type UserUpdateInput = z.infer<typeof userUpdateSchema>;
+
 export const signupSchema = z.object({
   email: z.string().email().max(255),
   password: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH),
