@@ -11,7 +11,9 @@ services:
       # the seed one-shot writes while the server holds a connection.
       DATABASE_URL: 'file:/data/app.db?busy_timeout=5000'
       # Demo-only secret (>=32 chars). Rotating it invalidates stored Jira tokens.
-      APP_SECRET: 'identityhub-oasis-demo-secret-value!!'
+      # IMPORTANT: change this before any real use — shared secrets compromise
+      # at-rest encryption of Jira tokens.
+      APP_SECRET: ${APP_SECRET:-change-me-to-at-least-32-characters!!}
       ALLOW_OPEN_SIGNUP: 'true'
       ALLOW_ADMIN: 'true'
       # Graders run the UI over http://localhost, so cookies must not be secure-only.
@@ -45,7 +47,7 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: 'file:/data/app.db?busy_timeout=5000'
-      APP_SECRET: 'identityhub-oasis-demo-secret-value!!'
+      APP_SECRET: ${APP_SECRET:-change-me-to-at-least-32-characters!!}
     volumes:
       - ./data:/data
     depends_on:
