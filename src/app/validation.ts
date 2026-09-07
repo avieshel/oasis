@@ -119,7 +119,7 @@ export const ticketCreateSchema = z.object({
 export type TicketCreate = z.infer<typeof ticketCreateSchema>;
 
 export const jiraRecentTicketsQuerySchema = z.object({
-  project_key: projectKeySchema,
+  project_key: projectKeySchema.optional(),
   refresh: z
     .enum(['true', 'false'])
     .optional()

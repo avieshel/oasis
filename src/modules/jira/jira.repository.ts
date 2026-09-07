@@ -96,14 +96,14 @@ export class JiraRepository {
   async findRecentTickets(
     tenantId: string,
     principal: JiraPrincipal,
-    projectKey: string,
+    projectKey: string | null,
     limit: number,
   ) {
     return this.prisma.tickets_cache.findMany({
       where: {
         tenant_id: tenantId,
         ...principalScope(principal),
-        project_key: projectKey,
+        ...(projectKey === null ? {} : { project_key: projectKey }),
       },
       orderBy: { jira_created_at: 'desc' },
       take: limit,
@@ -113,13 +113,13 @@ export class JiraRepository {
   async lastReconciledAt(
     tenantId: string,
     principal: JiraPrincipal,
-    projectKey: string,
+    projectKey: string | null,
   ): Promise<Date | null> {
     const result = await this.prisma.tickets_cache.aggregate({
       where: {
         tenant_id: tenantId,
         ...principalScope(principal),
-        project_key: projectKey,
+        ...(projectKey === null ? {} : { project_key: projectKey }),
       },
       _max: { reconciled_at: true },
     });
@@ -187,16 +187,21 @@ export class JiraRepository {
     principal: JiraPrincipal,
     data: {
       jiraSite: string;
-      projectKey: string;
+      projectKey: string | null;
       reconciledAt: Date;
-      issues: { key: string; title: string; createdAt: Date }[];
+      issues: {
+        key: string;
+        title: string;
+        createdAt: Date;
+        projectKey: string;
+      }[];
     },
   ) {
     const whereScope = {
       tenant_id: tenantId,
       ...principalScope(principal),
       jira_site: data.jiraSite,
-      project_key: data.projectKey,
+      ...(data.projectKey === null ? {} : { project_key: data.projectKey }),
     };
     const deleteStale =
       data.issues.length === 0
@@ -216,7 +221,7 @@ export class JiraRepository {
               user_id_jira_site_project_key_issue_key: {
                 user_id: principal.userId,
                 jira_site: data.jiraSite,
-                project_key: data.projectKey,
+                project_key: issue.projectKey,
                 issue_key: issue.key,
               },
             }
@@ -224,7 +229,7 @@ export class JiraRepository {
               api_key_id_jira_site_project_key_issue_key: {
                 api_key_id: principal.apiKeyId,
                 jira_site: data.jiraSite,
-                project_key: data.projectKey,
+                project_key: issue.projectKey,
                 issue_key: issue.key,
               },
             };
@@ -234,7 +239,7 @@ export class JiraRepository {
           tenant_id: tenantId,
           ...principalWrite(principal),
           jira_site: data.jiraSite,
-          project_key: data.projectKey,
+          project_key: issue.projectKey,
           issue_key: issue.key,
           title: issue.title,
           url: `${data.jiraSite}/browse/${issue.key}`,

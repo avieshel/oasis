@@ -83,9 +83,16 @@ Agent guide for the machine-facing REST API (scanner integration via API keys).
 
 ## Recent-tickets contract (actual)
 
-- `GET /api/v1/tickets/recent?project_key=` (project required).
-- `200` → bare array `[{ "key", "title", "url", "createdAt" }]` (newest first,
-  up to 10). `?refresh=true` forces a live Jira round-trip.
+- `GET /api/v1/tickets/recent?project_key=&refresh=` (project optional).
+- When `project_key` is omitted, returns recents across **all** boards the key
+  can access (honours `allowed_project_keys` when set) in a single JQL search.
+- `200` → bare array
+  `[{ "key", "title", "url", "createdAt", "projectKey" }]` (newest first, up
+  to 10). `?refresh=true` forces a live Jira round-trip.
+- Caching: recents are served from the `tickets_cache` table and refreshed in
+  the background when stale; `createTicket` and the project list both use the
+  60s in-memory `JiraService.listProjects` cache, so repeated calls never hit
+  Jira's `project/search` endpoint.
 
 ## Conventions
 

@@ -26,6 +26,7 @@ export interface JiraRecentTicket {
   title: string;
   url: string;
   createdAt: string | null;
+  projectKey: string;
 }
 
 export interface JiraCreateResult {
@@ -190,6 +191,35 @@ export class JiraService {
     };
   }
 
+  async testConnection(
+    tenantId: string,
+    principal: JiraPrincipal,
+    ctx: JiraAuditContext,
+  ): Promise<JiraConnectionState> {
+    const client = await this.clientFor(tenantId, principal);
+    const connection = await this.jiraRepository.findConnection(
+      tenantId,
+      principal,
+    );
+    const myself = await client.getMyself();
+    await this.audit.write({
+      tenantId,
+      userId: this.principalId(principal),
+      action: AuditAction.JIRA_CONNECTION_TEST,
+      target: client.origin,
+      ip: ctx.ip ?? null,
+      userAgent: ctx.userAgent ?? null,
+    });
+    return {
+      connected: true,
+      siteUrl: client.origin,
+      email: connection?.email ?? undefined,
+      accountId: myself.accountId,
+      displayName: myself.displayName,
+      mode: 'api_token',
+    };
+  }
+
   async listProjects(
     tenantId: string,
     principal: JiraPrincipal,
@@ -223,7 +253,7 @@ export class JiraService {
   ): Promise<JiraCreateResult> {
     const client = await this.clientFor(tenantId, principal);
 
-    const projects = await client.listProjects();
+    const projects = await this.listProjects(tenantId, principal);
     const projectKnown = projects.some((p) => p.key === input.projectKey);
     if (!projectKnown) {
       throw new ProjectNotFoundError(input.projectKey);
@@ -267,8 +297,9 @@ export class JiraService {
   async listRecentTickets(
     tenantId: string,
     principal: JiraPrincipal,
-    projectKey: string,
+    projectKey: string | null,
     forcedRefresh = false,
+    scopeKeys?: string[],
   ): Promise<JiraRecentTicket[]> {
     const cached = await this.jiraRepository.findRecentTickets(
       tenantId,
@@ -283,20 +314,24 @@ export class JiraService {
     );
 
     if (forcedRefresh) {
-      return this.refreshFromJira(tenantId, principal, projectKey);
+      return this.refreshFromJira(tenantId, principal, projectKey, scopeKeys);
     }
 
     if (cached.length === 0) {
-      return this.refreshFromJira(tenantId, principal, projectKey);
+      return this.refreshFromJira(tenantId, principal, projectKey, scopeKeys);
     }
 
     const isFresh =
       reconciledAt !== null &&
       Date.now() - reconciledAt.getTime() < this.cacheTtlMs();
     if (!isFresh) {
-      void this.refreshFromJira(tenantId, principal, projectKey).catch(
-        (error) =>
-          this.logger.warn('background recent-tickets refresh failed', error),
+      void this.refreshFromJira(
+        tenantId,
+        principal,
+        projectKey,
+        scopeKeys,
+      ).catch((error) =>
+        this.logger.warn('background recent-tickets refresh failed', error),
       );
     }
 
@@ -306,31 +341,42 @@ export class JiraService {
   private async refreshFromJira(
     tenantId: string,
     principal: JiraPrincipal,
-    projectKey: string,
+    projectKey: string | null,
+    scopeKeys?: string[],
   ): Promise<JiraRecentTicket[]> {
     const client = await this.clientFor(tenantId, principal);
+    const projectClause =
+      projectKey !== null
+        ? `project = "${projectKey}"`
+        : scopeKeys !== undefined && scopeKeys.length > 0
+          ? `project in (${scopeKeys.map((k) => `"${k}"`).join(', ')})`
+          : null;
     const jql =
-      `project = "${projectKey}" AND labels = "${JIRA_LABEL_FINDING}" ` +
-      `ORDER BY created DESC`;
+      (projectClause === null ? '' : `${projectClause} AND `) +
+      `labels = "${JIRA_LABEL_FINDING}" ORDER BY created DESC`;
 
     const issues = await client.searchByJql(jql, JIRA_RECENT_TICKETS_LIMIT);
     const now = new Date();
+    const entries = issues.map((issue) => ({
+      key: issue.key,
+      title: issue.fields.summary ?? '',
+      createdAt: jiraDateToDate(issue.fields.created) ?? now,
+      projectKey:
+        issue.fields.project?.key ?? projectKey ?? issueKeyProject(issue.key),
+    }));
     await this.jiraRepository.syncRecentTickets(tenantId, principal, {
       jiraSite: client.origin,
       projectKey,
       reconciledAt: now,
-      issues: issues.map((issue) => ({
-        key: issue.key,
-        title: issue.fields.summary ?? '',
-        createdAt: jiraDateToDate(issue.fields.created) ?? now,
-      })),
+      issues: entries,
     });
 
-    return issues.map((issue) => ({
-      key: issue.key,
-      title: issue.fields.summary ?? '',
-      url: `${client.origin}/browse/${issue.key}`,
-      createdAt: normalizeJiraDate(issue.fields.created),
+    return entries.map((entry): JiraRecentTicket => ({
+      key: entry.key,
+      title: entry.title,
+      url: `${client.origin}/browse/${entry.key}`,
+      createdAt: entry.createdAt.toISOString(),
+      projectKey: entry.projectKey,
     }));
   }
 }
@@ -343,12 +389,9 @@ function jiraDateToDate(value: string | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function normalizeJiraDate(value: string | undefined): string | null {
-  if (value === undefined) {
-    return null;
-  }
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+function issueKeyProject(key: string): string {
+  const prefix = key.split('-')[0] ?? '';
+  return /^[A-Z][A-Z0-9]+$/.test(prefix) ? prefix : 'UNKNOWN';
 }
 
 function toRecentTicket(
@@ -359,5 +402,6 @@ function toRecentTicket(
     title: ticket.title,
     url: ticket.url,
     createdAt: ticket.jira_created_at.toISOString(),
+    projectKey: ticket.project_key,
   };
 }

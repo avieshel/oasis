@@ -21,6 +21,7 @@ export interface JiraRecentTicket {
   title: string;
   url: string;
   createdAt: string | null;
+  projectKey: string;
 }
 
 export interface JiraCreateResult {
@@ -65,12 +66,19 @@ export async function createTicket(
 }
 
 export async function listRecentTickets(
-  projectKey: string,
+  projectKey: string | null,
   refresh = false,
 ): Promise<JiraRecentTicket[]> {
+  const params = new URLSearchParams();
+  if (projectKey !== null) {
+    params.set('project_key', projectKey);
+  }
+  if (refresh) {
+    params.set('refresh', 'true');
+  }
+  const query = params.toString();
   return apiRequest<JiraRecentTicket[]>(
     'GET',
-    `/jira/tickets/recent?project_key=${encodeURIComponent(projectKey)}` +
-      (refresh ? '&refresh=true' : ''),
+    `/jira/tickets/recent${query === '' ? '' : `?${query}`}`,
   );
 }

@@ -127,7 +127,7 @@ export class JiraController {
     return this.jiraService.listRecentTickets(
       tenantId,
       { kind: 'user', userId: user.id },
-      query.project_key,
+      query.project_key ?? null,
       query.refresh,
     );
   }

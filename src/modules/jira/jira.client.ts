@@ -40,6 +40,7 @@ export interface JiraIssueSearchResult {
   fields: {
     summary?: string;
     created?: string;
+    project?: { key?: string };
   };
 }
 
@@ -273,7 +274,7 @@ export class JiraClient {
     const params = new URLSearchParams({
       jql,
       maxResults: String(maxResults),
-      fields: 'summary,created',
+      fields: 'summary,created,project',
     });
     const data = await this.request<{
       issues: JiraIssueSearchResult[];

@@ -61,7 +61,7 @@ const RECENT_RESPONSE: SchemaObject = {
   type: 'array',
   items: {
     type: 'object',
-    required: ['key', 'title', 'url', 'createdAt'],
+    required: ['key', 'title', 'url', 'createdAt', 'projectKey'],
     properties: {
       key: { type: 'string', example: 'OASIS-42' },
       title: { type: 'string', example: 'Certificate expiring soon' },
@@ -76,6 +76,7 @@ const RECENT_RESPONSE: SchemaObject = {
         nullable: true,
         example: '2026-09-07T08:00:00.000Z',
       },
+      projectKey: { type: 'string', example: 'OASIS' },
     },
   },
 };
@@ -176,12 +177,14 @@ export class TicketsRestController {
     summary: 'List recent tickets',
     description:
       'Most recent tickets (up to 10) created for the project via this API ' +
-      'key, newest first. Serves from the cache and refreshes in the background ' +
+      'key, newest first. When `project_key` is omitted, returns recents ' +
+      'across all boards the key can access (scoped to `allowed_project_keys` ' +
+      'when set). Serves from the cache and refreshes in the background ' +
       'when stale; `refresh=true` forces a live Jira round-trip.',
   })
   @ApiQuery({
     name: 'project_key',
-    required: true,
+    required: false,
     schema: PROJECT_KEY_JSON_SCHEMA,
   })
   @ApiQuery({
@@ -209,12 +212,15 @@ export class TicketsRestController {
   })
   async recent(@CurrentApiKey() key: ApiKeyIdentity, @Req() req: Request) {
     const query = jiraRecentTicketsQuerySchema.parse(req.query);
-    assertProjectAllowed(key, query.project_key);
+    if (query.project_key !== undefined) {
+      assertProjectAllowed(key, query.project_key);
+    }
     return this.jiraService.listRecentTickets(
       key.tenantId,
       { kind: 'api_key', apiKeyId: key.id },
-      query.project_key,
+      query.project_key ?? null,
       query.refresh,
+      key.allowedProjectKeys ?? undefined,
     );
   }
 }

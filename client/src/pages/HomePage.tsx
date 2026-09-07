@@ -60,6 +60,7 @@ export function HomePage(): JSX.Element {
 
   const [projects, setProjects] = useState<JiraProjectSummary[] | null>(null);
   const [manualProject, setManualProject] = useState('');
+  const [recentProject, setRecentProject] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [recent, setRecent] = useState<JiraRecentTicket[]>([]);
@@ -88,7 +89,7 @@ export function HomePage(): JSX.Element {
     listProjects()
       .then((loaded) => {
         setProjects(loaded);
-        setManualProject(loaded[0]?.key ?? '');
+        setManualProject('');
       })
       .catch((err: unknown) => {
         if (
@@ -125,15 +126,15 @@ export function HomePage(): JSX.Element {
   }, [statusFilter, severityFilter, reloadKey]);
 
   useEffect(() => {
-    if (jiraConnected !== true || manualProject === '') {
+    if (jiraConnected !== true) {
       return;
     }
-    listRecentTickets(manualProject)
+    listRecentTickets(recentProject === '' ? null : recentProject)
       .then(setRecent)
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : 'unable to load tickets'),
       );
-  }, [jiraConnected, manualProject]);
+  }, [jiraConnected, recentProject]);
 
   if (auth.status === 'anonymous') {
     return <Navigate to="/login" replace />;
@@ -230,6 +231,7 @@ export function HomePage(): JSX.Element {
       setTicketTarget(null);
       refresh();
       setManualProject(ticketProject);
+      setRecentProject(ticketProject);
       setRecent(await listRecentTickets(ticketProject));
       setTab('recent');
     } catch (err: unknown) {
@@ -252,6 +254,7 @@ export function HomePage(): JSX.Element {
       setTitle('');
       setDescription('');
       setShowCreate(false);
+      setRecentProject(manualProject);
       setRecent(await listRecentTickets(manualProject));
     } catch (err: unknown) {
       setError(
@@ -266,10 +269,12 @@ export function HomePage(): JSX.Element {
     setBusy(true);
     setError(null);
     try {
-      if (manualProject === '') {
-        throw new Error('Select a project first');
-      }
-      setRecent(await listRecentTickets(manualProject, refresh));
+      setRecent(
+        await listRecentTickets(
+          recentProject === '' ? null : recentProject,
+          refresh,
+        ),
+      );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'unable to load tickets');
     } finally {
@@ -335,29 +340,44 @@ export function HomePage(): JSX.Element {
           {jiraConnected === true ? (
             <>
               <div className="inline-form">
+                <label>
+                  Project
+                  <select
+                    value={recentProject}
+                    onChange={(e) => setRecentProject(e.target.value)}
+                  >
+                    <option value="">All projects</option>
+                    {projects?.map((p) => (
+                      <option key={p.key} value={p.key}>
+                        {p.key} — {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <button
                   type="button"
-                  disabled={busy || manualProject === ''}
+                  disabled={busy}
                   onClick={() => void handleLoadRecent(false)}
                 >
                   Load recent
                 </button>
                 <button
                   type="button"
-                  disabled={busy || manualProject === ''}
+                  disabled={busy}
                   onClick={() => void handleLoadRecent(true)}
                 >
                   Refresh
                 </button>
               </div>
               {recent.length === 0 ? (
-                <p className="muted">No tickets yet for this project.</p>
+                <p className="muted">No tickets yet.</p>
               ) : (
                 <table className="admin-table">
                   <thead>
                     <tr>
                       <th>Key</th>
                       <th>Title</th>
+                      <th>Project</th>
                       <th>Created</th>
                     </tr>
                   </thead>
@@ -370,6 +390,7 @@ export function HomePage(): JSX.Element {
                           </a>
                         </td>
                         <td>{ticket.title}</td>
+                        <td>{ticket.projectKey}</td>
                         <td>
                           {ticket.createdAt === null
                             ? '—'
@@ -396,7 +417,7 @@ export function HomePage(): JSX.Element {
                       value={manualProject}
                       onChange={(e) => setManualProject(e.target.value)}
                     >
-                      <option value="">Select a project…</option>
+                      <option value="">All projects</option>
                       {projects?.map((p) => (
                         <option key={p.key} value={p.key}>
                           {p.key} — {p.name}
