@@ -4,37 +4,69 @@ Agent guide for the code that talks to Jira Cloud (connect, create tickets, list
 
 ## Current state — implemented and tested
 
-- `jira.client.ts` — fetch wrapper: 10s timeout, 401/403/404/429 error mapping;
-  `getMyself`, `listProjects`, `createIssue` (ADF body), `searchByJql`.
+- `jira.client.ts` — fetch wrapper with **10s connect / 30s response timeouts**
+  (`JIRA_CONNECT_TIMEOUT_MS` / `JIRA_RESPONSE_TIMEOUT_MS`), **2x retry on 5xx /
+  timeout for GET requests only** (never 4xx, never on POST — no blind
+  create-retry; `JiraRetryableUpstreamError` marks retryable failures). Error
+  mapping: 401 `UnauthorizedError`, 403 `PermissionDeniedError`, 404
+  `NotFoundError`, 429 `RateLimitedError` (honors `Retry-After`), 5xx
+  `UpstreamError`. Safe `errorDetail()` extracts Jira `errorMessages`/`errors`/
+  `message`. Methods: `getMyself`, `serverInfo` (returns `cloudId`),
+  `listProjects`, `createIssue` (ADF body), `searchByJql`
+  (`/rest/api/3/search/jql?jql=…` — NOT the removed `/rest/api/3/search`).
 - `jira.repository.ts` — tenant-scoped, sealed persistence; `findByUser`,
-  `deleteByUser`, `upsertApiTokenConnection`.
-- `jira.service.ts` + `jira.controller.ts` (prefix: `app/jira`, session-guarded).
-  6 endpoints:
-  - `POST /connect` (+ `DELETE /connect`) — validate via `getMyself`, store
-    sealed AES-256-GCM token. `@Throttle` = `jiraConnect`.
+  `deleteByUser`, `upsertApiTokenConnection` (stores `cloud_id`),
+  `findRecentTickets`, `lastReconciledAt`, `upsertRecentTicket`,
+  `syncRecentTickets` (upsert-10 + prune, in a transaction).
+- `jira.service.ts` + `jira.controller.ts` (prefix: `app/jira`,
+  session-guarded). Endpoints:
+  - `POST /connect` (+ `DELETE /connect`) — validate via `getMyself`, read
+    `cloud_id` from `serverInfo` (best-effort, non-fatal), store sealed
+    AES-256-GCM token. `@Throttle` = `jiraConnect`. Connect/disconnect evict
+    the user's projects cache.
   - `GET /status` — `{ connected, siteUrl, email, mode }`.
-  - `GET /projects` — raw list from `/rest/api/3/project/search`.
-    `@Throttle` = `jiraProjects`. **No `@Throttle`-set on create/recent → they
-    fall to the global default, even though `ticketCreateUi`/`ticketCreateApi`
-    limits exist in `rate-limits.ts` (see pending note below).**
+  - `GET /projects` — from `/rest/api/3/project/search`, **60s per-user
+    in-memory cache** (`JIRA_PROJECTS_CACHE_TTL_MS`), keyed by tenant+user.
+    `@Throttle` = `jiraProjects`.
   - `POST /tickets` (201) — creates a **Task** with ADF description and label
-    `identityhub-finding`; pre-checks project membership via
-    `assertProjectExists` → 404 `PROJECT_NOT_FOUND`. Returns `{ key, url }`
-    where `url = {site}/browse/{key}`.
-  - `GET /tickets/recent?project_key=…` — **live JQL**
-    `project = "<KEY>" AND labels = "identityhub-finding" ORDER BY created
-DESC`, maxResults 10. Returns `[{ key, title, url, createdAt }]`.
-    **Does NOT read/write `tickets_cache`** (minimal-pass decision — see
-    pending note below).
+    `identityhub-finding`; pre-checks project membership via the live projects
+    list → 404 `PROJECT_NOT_FOUND`. Returns `{ key, url }` where
+    `url = {site}/browse/{key}`. **Writes the new ticket to `tickets_cache`**
+    (write-through) so it shows in recent immediately.
+  - `GET /tickets/recent?project_key=…&refresh=` — **cache-first** via
+    `tickets_cache`. Behavior:
+    - `refresh=true` → force live JQL call, upsert + prune, return fresh.
+    - cache miss → live JQL call (blocking), upsert, return.
+    - cache hit within `JIRA_CACHE_TTL_MS` (default **60s**) → serve cache.
+    - cache stale → serve last-known-good **and** kick off an async background
+      JQL refresh; async failures are logged as warnings and never surface.
+    - JQL `project = "<KEY>" AND labels = "identityhub-finding" ORDER BY
+created DESC`, maxResults 10 → `[{ key, title, url, createdAt }]`.
+  - **All repository calls filter `tenant_id`** — cross-tenant cache/projects
+    isolation is structural, not incidental (tested).
 - `jira.adf.ts` — ADF document builder (doc/paragraph/text, newline-split).
 - `jira.module.ts` (imports AuthModule; exports `JiraService`, `JiraRepository`).
   Registered in `app.module.ts`.
 - UI: `client/src/pages/JiraPage.tsx` (connect form, project select, create
-  form, recent list, disconnect) at route `/jira`, linked from `HomePage.tsx`.
-  `client/src/api/client.ts` `apiRequest` now supports `DELETE`.
-- Tests: `test/jira.spec.ts` (7 tests, fetch-stubbed against Jira).
+  form, recent list with **Load recent** + **Refresh** buttons, disconnect) at
+  route `/jira`, linked from `HomePage.tsx`.
+  `client/src/api/client.ts` `apiRequest` supports `DELETE` and the jira API
+  client passes the `refresh` query flag.
+- Tests: `test/jira.spec.ts` (13 tests, fetch-stubbed against Jira): connect →
+  cloud_id persisted → projects (+ per-user cache) → create (writes cache) →
+  cache hit (zero Jira calls) → forced refresh → sub-tenant isolation → 503
+  retry → no-retry on create → disconnect.
 - `jira:smoke` script + `local/jira-credentials.example.json` (see below).
 - Jira **Cloud only** — no self-hosted Server support.
+
+## Pending (explicitly deferred)
+
+- Applying `ticketCreateUi`/`ticketCreateApi` throttles to the create/recent
+  routes (config exists in `rate-limits.ts`; routes currently use the global
+  default). Tracked as part of #12.
+- REST `POST /api/v1/tickets` + `GET /api/v1/tickets/recent` behind `ApiKeyGuard`
+  — **#12** (depends on #7 API-key infra).
+- `jira.oauth.ts` — OAuth 3LO **skipped** by product decision; do not create.
 
 ## Connection model (locked — CONTEXT.md §16.5)
 
@@ -47,14 +79,14 @@ DESC`, maxResults 10. Returns `[{ key, title, url, createdAt }]`.
 - Automation (REST/API keys) rides the API-key owner's connection; an
   autonomous process is a dedicated bot/svc user with its own link + key.
 
-## Pending (explicitly deferred to keep the minimal slice green)
+## Pending (explicitly deferred)
 
-- `tickets_cache` read model + async JQL reconcile (recent list currently hits
-  live Jira; cache schema exists in Prisma, unused).
 - Applying `ticketCreateUi`/`ticketCreateApi` throttles to the create/recent
-  routes (config exists in `rate-limits.ts`, routes currently use the global
-  default).
-- `jira.oauth.ts` — OAuth 3LO, **deferred** (not in demo scope).
+  routes (config exists in `rate-limits.ts`; routes currently use the global
+  default). Tracked as part of #12.
+- REST `POST /api/v1/tickets` + `GET /api/v1/tickets/recent` behind
+  `ApiKeyGuard` — **#12** (depends on #7 API-key infra).
+- `jira.oauth.ts` — OAuth 3LO **skipped** by product decision; do not create.
 
 ## Test connection (secrets never reach the LLM)
 

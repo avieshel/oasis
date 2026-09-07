@@ -699,8 +699,8 @@ static assets and served by Nest (`useStaticAssets`), dev via Vite proxy
 core (§7.1 invariants); Jira features (4–7) are modeled for a single user and
 "just work" once identity is airtight.**
 
-Slices 1–6 are **implemented, tested, and committed** (as of the "add Jira
-connect, project list, and ticket create/read flow" commit). Remaining:
+Slices 1–6 are **implemented, tested, and committed**. State as of the
+recent-tickets cache + client-hardening commits (`3ee218a`, `ecdc32d`):
 
 1. ✅ Repo skeleton: NestJS app + Prisma + config (zod env) + crypto + logging +
    `client/` Vite scaffold (proxy wired, placeholder page).
@@ -708,13 +708,20 @@ connect, project list, and ticket create/read flow" commit). Remaining:
 3. ✅ **Identity core**: session manager (rotation, idle+absolute), login/logout,
    CSRF, rate-limit, helmet — proving every §7.1 invariant. React pages for
    login/signup wired against it.
-4. ✅ Jira client + connect (API-token path; OAuth **deferred**).
-5. ✅ Create-ticket API + React form + ADF. _Deviation from original plan:
-   does **not** write `tickets_cache` on success in the minimal pass._
-6. ✅/part. Recent-tickets view is in (live JQL). _Deferred:_ cache read model
-   - async JQL reconcile (`tickets_cache` schema exists, unused).
+4. ✅ Jira client + connect (API-token only — OAuth **skipped** by product
+   decision), projects with 60s per-user cache; client hardened (10s
+   connect/30s response timeouts, retry 2x on GET 5xx/timeout, never on POST;
+   `cloud_id` stored from `serverInfo`). Issue #4 closed.
+5. ✅ Create-ticket UI API + React form + ADF; **writes `tickets_cache`** on
+   success (write-through). REST endpoint moved to #12.
+6. ✅ **Recent-tickets read model**: cache-first via `tickets_cache` (TTL
+   60s default, `JIRA_CACHE_TTL_MS`), async stale-good background refresh with
+   warning-only failures, `?refresh=true` forces a live JQL call, prune on
+   sync. All cache queries tenant-scoped (cross-tenant isolation tested).
+   REST endpoint moved to #12.
 7. ⏳ **Next slice**: apply the `ticketCreateUi`/`ticketCreateApi` throttles to
-   the create/recent routes (currently global default), then API keys + REST
-   `POST /api/v1/tickets` (public contract).
+   the create/recent routes (currently global default), then API keys (issue
+   **#7**) + the REST surface (issue **#12**: `POST /api/v1/tickets` and
+   `GET /api/v1/tickets/recent` behind `ApiKeyGuard`).
 8. ⏳ README + design-decisions doc; reviewer distribution via Docker image
    (tracked as GitHub issue #11).
