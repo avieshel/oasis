@@ -33,7 +33,7 @@ ENV NODE_ENV=production \
     PORT=3000
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends openssl ca-certificates dumb-init \
+ && apt-get install -y --no-install-recommends openssl ca-certificates dumb-init sqlite3 \
  && rm -rf /var/lib/apt/lists/*
 
 # Production dependencies only.
