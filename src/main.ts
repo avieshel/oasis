@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
+import { setupSwagger } from './swagger';
 import { loadConfig } from './config';
 
 async function bootstrap(): Promise<void> {
@@ -35,6 +36,7 @@ async function bootstrap(): Promise<void> {
   );
 
   app.setGlobalPrefix('api', { exclude: ['healthz', 'readyz'] });
+  setupSwagger(app);
 
   await app.listen(config.PORT);
 }
