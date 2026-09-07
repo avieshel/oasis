@@ -14,19 +14,25 @@ Agent guide for the code that talks to Jira Cloud (connect, create tickets, list
   `message`. Methods: `getMyself`, `serverInfo` (returns `cloudId`),
   `listProjects`, `createIssue` (ADF body), `searchByJql`
   (`/rest/api/3/search/jql?jql=…` — NOT the removed `/rest/api/3/search`).
-- `jira.repository.ts` — tenant-scoped, sealed persistence; `findByUser`,
-  `deleteByUser`, `upsertApiTokenConnection` (stores `cloud_id`),
+- **Principal model** — `JiraPrincipal = { kind: 'user'; userId } | { kind:
+'api_key'; apiKeyId }` (see §Connection model below). Every repository/service
+  method takes `tenantId` + a `JiraPrincipal` first.
+- `jira.repository.ts` — tenant-scoped, sealed persistence; `findConnection`,
+  `deleteConnection`, `upsertApiTokenConnection` (stores `cloud_id`),
   `findRecentTickets`, `lastReconciledAt`, `upsertRecentTicket`,
-  `syncRecentTickets` (upsert-10 + prune, in a transaction).
+  `syncRecentTickets`. Cache writes are keyed per principal (a user and an API
+  key on the same tenant+site+project keep distinct `tickets_cache` rows via
+  dual `@@unique`; SQLite treats NULLs as distinct so both coexist).
 - `jira.service.ts` + `jira.controller.ts` (prefix: `app/jira`,
   session-guarded). Endpoints:
   - `POST /connect` (+ `DELETE /connect`) — validate via `getMyself`, read
     `cloud_id` from `serverInfo` (best-effort, non-fatal), store sealed
     AES-256-GCM token. `@Throttle` = `jiraConnect`. Connect/disconnect evict
-    the user's projects cache.
+    the principal's projects cache.
   - `GET /status` — `{ connected, siteUrl, email, mode }`.
-  - `GET /projects` — from `/rest/api/3/project/search`, **60s per-user
-    in-memory cache** (`JIRA_PROJECTS_CACHE_TTL_MS`), keyed by tenant+user.
+  - `GET /projects` — from `/rest/api/3/project/search`, **60s per-principal
+    in-memory cache** (`JIRA_PROJECTS_CACHE_TTL_MS`), keyed by
+    tenant + `user:<id>`/`key:<id>`.
     `@Throttle` = `jiraProjects`.
   - `POST /tickets` (201) — creates a **Task** with ADF description and label
     `identityhub-finding`; pre-checks project membership via the live projects
@@ -45,57 +51,64 @@ created DESC`, maxResults 10 → `[{ key, title, url, createdAt }]`.
   - **All repository calls filter `tenant_id`** — cross-tenant cache/projects
     isolation is structural, not incidental (tested).
 - `jira.adf.ts` — ADF document builder (doc/paragraph/text, newline-split).
-- `jira.module.ts` (imports AuthModule; exports `JiraService`, `JiraRepository`).
-  Registered in `app.module.ts`.
+- `jira.module.ts` (imports AuthModule; exports `JiraService`, `JiraRepository`,
+  used by both the session UI and the API-key REST controllers). Registered in
+  `app.module.ts`.
 - UI: `client/src/pages/JiraPage.tsx` (connect form, project select, create
   form, recent list with **Load recent** + **Refresh** buttons, disconnect) at
   route `/jira`, linked from `HomePage.tsx`.
   `client/src/api/client.ts` `apiRequest` supports `DELETE` and the jira API
   client passes the `refresh` query flag.
-- Tests: `test/jira.spec.ts` (13 tests, fetch-stubbed against Jira): connect →
-  cloud_id persisted → projects (+ per-user cache) → create (writes cache) →
-  cache hit (zero Jira calls) → forced refresh → sub-tenant isolation → 503
-  retry → no-retry on create → disconnect.
+- API keys: `src/modules/api-keys/` — mint/revoke/guard + management UI at
+  route `/api-keys` (`client/src/pages/ApiKeysPage.tsx`); a key's connection is
+  tied via `POST /app/api-keys/:id/jira/connect`. Rest APIs in
+  `api-keys/tickets.controller.ts` re-use `JiraService` (create/recent) behind
+  `ApiKeyGuard` + per-key throttle. See `Rest-Api-Context.md`.
+- Tests: `test/jira.spec.ts` (13 tests, fetch-stubbed against Jira); `test/api-keys.spec.ts`
+  (10 tests) covers the key-tied connection, key-scoped cache-first recent
+  (zero Jira calls on hit), 403 project scope, revoked/invalid 401s and tenant
+  isolation.
 - `jira:smoke` script + `local/jira-credentials.example.json` (see below).
 - Jira **Cloud only** — no self-hosted Server support.
 
-## Pending (explicitly deferred)
-
-- Applying `ticketCreateUi`/`ticketCreateApi` throttles to the create/recent
-  routes (config exists in `rate-limits.ts`; routes currently use the global
-  default). Tracked as part of #12.
-- REST `POST /api/v1/tickets` + `GET /api/v1/tickets/recent` behind `ApiKeyGuard`
-  — **#12** (depends on #7 API-key infra).
-- `jira.oauth.ts` — OAuth 3LO **skipped** by product decision; do not create.
-
 ## Connection model (locked — CONTEXT.md §16.5)
 
-- **Exactly one Jira connection per user** (`jira_connections.user_id UNIQUE`).
-  One connection = one Jira workspace/site; the site contains many projects, so
-  the ticket flow is "user → their connection → pick project → create". No
-  connection picker, no shared/tenant connections in this scope.
+- **Exactly one Jira connection per principal** — a _user_ OR an _API key_
+  (`jira_connections.user_id UNIQUE` / `api_key_id UNIQUE`, both nullable,
+  at-most-one of them set per row).
+- **API keys own their own connection.** Automation does NOT ride a human user's
+  connection. Each key is manually tied to a Jira **Service Account** (see
+  below) through the API-keys UI. The old "bot user shares the auth flow" model
+  is retired.
+- Jira **Service Accounts** (Atlassian non-human principals): created only by
+  an **Org Admin** in Atlassian Admin (no UI login, per-project grants, API
+  tokens with scopes `read:jira-work`/`write:jira-work`). Our app can't create
+  them server-side — the operator provisions one per API key and ties it in. The
+  Jira client is unchanged (Basic auth `email:api_token` as with users). Tokens
+  expire ~1 year; re-tie the key when the connection starts failing with 401.
 - Slices use the same rules as the connect UI: seal tokens with AES-256-GCM,
-  store site + email, per-user uniqueness enforced in the repository.
-- Automation (REST/API keys) rides the API-key owner's connection; an
-  autonomous process is a dedicated bot/svc user with its own link + key.
+  store site + email, per-principal uniqueness enforced in the repository.
+- The REST surface derives its Jira connection from the **authenticating key**,
+  never from a session user.
 
 ## Pending (explicitly deferred)
 
-- Applying `ticketCreateUi`/`ticketCreateApi` throttles to the create/recent
-  routes (config exists in `rate-limits.ts`; routes currently use the global
-  default). Tracked as part of #12.
-- REST `POST /api/v1/tickets` + `GET /api/v1/tickets/recent` behind
-  `ApiKeyGuard` — **#12** (depends on #7 API-key infra).
+- Applying the `ticketCreateUi` throttle to the UI create/recent routes (config
+  exists; routes currently use the global default). `ticketCreateApi` is already
+  applied to the REST endpoints.
 - `jira.oauth.ts` — OAuth 3LO **skipped** by product decision; do not create.
+- Ticket editing/transitions/comments, Jira webhooks, project creation, custom
+  fields beyond the four supported — out of scope.
 
 ## Test connection (secrets never reach the LLM)
 
 > **Scope note (important):** The `local/jira-credentials.json` file powers the
 > **`jira:smoke` script ONLY**. The running application (`npm start`) never reads
-> it — live credentials come from HTTP requests (`POST /api/app/jira/connect`),
-> not from this file. It has **zero effect** on the served app, development
-> server, or any deployed system. It is a developer-only fixture for the standalone
-> smoke script; deleting it changes nothing about the application.
+> it — live credentials come from HTTP requests (`POST /api/app/jira/connect` /
+> `POST /api/app/api-keys/:id/jira/connect`), not from this file. It has **zero
+> effect** on the served app, development server, or any deployed system. It is
+> a developer-only fixture for the standalone smoke script; deleting it changes
+> nothing about the application.
 
 - Fill `local/jira-credentials.json` (copy from `jira-credentials.example.json`).
   It is gitignored; never commit or paste it. The file holds the Jira **site
@@ -118,3 +131,5 @@ project_not_found`, `429 rate_limited`, `502 upstream_jira` (safely-worded detai
 - Out of scope: ticket editing/transitions/comments, Jira webhooks, project
   creation, custom fields beyond the four supported.
 - Error mapping lives in the client wrapper; route handlers stay thin.
+- Project-scope enforcement (API keys) lives in the REST controller, not the
+  Jira service — the service stays principal-generic.

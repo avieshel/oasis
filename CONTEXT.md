@@ -653,16 +653,21 @@ in this scope).
      authenticated account and offers no "on-behalf-of", so the truthy "who
      created this" is the user's own connection. Our `tickets_cache` and
      `audit_log` record `creator_user_id`/`user_id` for local attribution too.
-   - Automation (REST, §9 API keys) rides the API-key owner's connection; an
-     autonomous process is a **bot/svc user** with its own Jira service-account
-     link + API key — the standard pattern, so no shared/tenant connection is
-     needed. Entry-point is the same `jira_connections` table.
-   - **Deferred / non-goals**: multiple connections per user (needs a second
-     Jira site per person — later: relax the `user_id UNIQUE` constraint and
-     re-key `tickets_cache` on `connection_id`); shared/tenant-level connections
-     (later: `owner_user_id NULL` + tenant default). Model was deliberately kept
-     at the simple form; the multi-connection exploration (§16.5 discussion)
-     was reverted for scope.
+
+- Automation (REST, §9 API keys): each API key owns its **own** Jira
+  connection backed by an Atlassian **Service Account** (non-human
+  principal, provisioned by an Org Admin; our app can't create them
+  server-side). The operator ties a key's credentials via the API-keys UI.
+  Connection rows are exactly-one-of `user_id`/`api_key_id`. The old
+  "bot/svc user rides the user auth flow" design was retired in favor of
+  per-key connections.
+  - **Deferred / non-goals**: multiple connections per user (needs a second
+    Jira site per person — later: relax the `user_id UNIQUE` constraint and
+    re-key `tickets_cache` on `connection_id`); shared/tenant-level connections
+    (later: `owner_user_id NULL` + tenant default). Model was deliberately kept
+    at the simple form; the multi-connection exploration (§16.5 discussion)
+    was reverted for scope.
+
 6. **In-app Jira quota token bucket** (mirror Jira's ~100/min per user so we
    self-throttle before Jira rejects) — optional. **Default decision: DEFER.**
    Honoring 429/`Retry-After` + the §11.1 read caches are enough for this
@@ -699,8 +704,8 @@ static assets and served by Nest (`useStaticAssets`), dev via Vite proxy
 core (§7.1 invariants); Jira features (4–7) are modeled for a single user and
 "just work" once identity is airtight.**
 
-Slices 1–6 are **implemented, tested, and committed**. State as of the
-recent-tickets cache + client-hardening commits (`3ee218a`, `ecdc32d`):
+Slices 1–7 are **implemented, tested, and committed**. State as of the API-key
+slice (`17e95b2`, after `3ee218a`/`ecdc32d`):
 
 1. ✅ Repo skeleton: NestJS app + Prisma + config (zod env) + crypto + logging +
    `client/` Vite scaffold (proxy wired, placeholder page).
@@ -709,19 +714,25 @@ recent-tickets cache + client-hardening commits (`3ee218a`, `ecdc32d`):
    CSRF, rate-limit, helmet — proving every §7.1 invariant. React pages for
    login/signup wired against it.
 4. ✅ Jira client + connect (API-token only — OAuth **skipped** by product
-   decision), projects with 60s per-user cache; client hardened (10s
+   decision), projects with 60s per-principal cache; client hardened (10s
    connect/30s response timeouts, retry 2x on GET 5xx/timeout, never on POST;
    `cloud_id` stored from `serverInfo`). Issue #4 closed.
 5. ✅ Create-ticket UI API + React form + ADF; **writes `tickets_cache`** on
-   success (write-through). REST endpoint moved to #12.
+   success (write-through).
 6. ✅ **Recent-tickets read model**: cache-first via `tickets_cache` (TTL
    60s default, `JIRA_CACHE_TTL_MS`), async stale-good background refresh with
    warning-only failures, `?refresh=true` forces a live JQL call, prune on
    sync. All cache queries tenant-scoped (cross-tenant isolation tested).
-   REST endpoint moved to #12.
-7. ⏳ **Next slice**: apply the `ticketCreateUi`/`ticketCreateApi` throttles to
-   the create/recent routes (currently global default), then API keys (issue
-   **#7**) + the REST surface (issue **#12**: `POST /api/v1/tickets` and
-   `GET /api/v1/tickets/recent` behind `ApiKeyGuard`).
-8. ⏳ README + design-decisions doc; reviewer distribution via Docker image
+7. ✅ **API keys + REST surface** (issues #7, #12 superseded/deleted).
+   API keys are first-class principals with **their own per-key Jira
+   service-account connections** (min/revoke, SHA-256 hash at rest, raw shown
+   once, `allowed_project_keys` scoping → 403, per-key rate limits, CSRF skip
+   for Bearer). REST: `POST /api/v1/tickets` + `GET /api/v1/tickets/recent`
+   behind `ApiKeyGuard`, reusing the same services/cache as the UI. Management
+   UI at route `/api-keys`. 10-test `test/api-keys.spec.ts`; full suite 46.
+   Jira service/repo generalized to `JiraPrincipal` (user | api_key).
+8. ⏳ **Next slice**: apply the `ticketCreateUi` throttle to the UI
+   create/recent routes (config exists; `ticketCreateApi` is already live for
+   REST), and surface per-key Jira status/`last_used_at` in the management UI.
+9. ⏳ README + design-decisions doc; reviewer distribution via Docker image
    (tracked as GitHub issue #11).

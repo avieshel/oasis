@@ -16,8 +16,16 @@ Agent guide for automated tests (vitest + supertest + shell harness).
     session rotation (old dies, csrf survives form-open-in-tab invariant),
     second-browser kill, logout replay rejection.
   - Login rate limit: 5/min/IP → 429 after budget exhaustion.
-  - All specs boot their own `AppModule` (with `cookieParser` + `setGlobalPrefix`)
-    so each describe has an isolated server/DB.
+- `test/jira.spec.ts` (13 specs): connect/unsealed default, cloud_id persisted,
+  sealed-token round trip, disconnect, projects (per-principal cache → zero Jira
+  calls on hit), create (writes `tickets_cache`), recent cache hit, forced
+  refresh, sub-tenant isolation, GET retry on 503 / no blind POST retry.
+- `test/api-keys.spec.ts` (10 specs): mint (raw once, hash-only), list metadata,
+  revoke, per-key Jira tie + status, REST create, REST recent cache-first (zero
+  Jira calls on hit), 403 scoped key, wildcard key OK, 401 invalid, 401 revoked,
+  cross-tenant delete 404.
+- All specs boot their own `AppModule` (with `cookieParser` + `setGlobalPrefix`)
+  so each describe has an isolated server/DB.
 - Run: `npm test`. Full gate: `npm run check` (lint + typecheck + test). CI runs
   the same (`ci.yml`).
 - Test files are linted/type-checked via `tsconfig.test.json`.
