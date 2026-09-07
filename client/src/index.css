@@ -43,6 +43,82 @@ body {
   background: #eee;
 }
 
+.admin-table button {
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.nav-links {
+  margin: 8px 0;
+}
+
+.nav-links a {
+  margin-right: 12px;
+}
+
+.chip {
+  background: #eee;
+  border: 1px solid #ddd;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.muted {
+  color: #666;
+  font-size: 13px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.badge-sev-info {
+  background: #6b7280;
+}
+
+.badge-sev-low {
+  background: #2563eb;
+}
+
+.badge-sev-medium {
+  background: #d97706;
+}
+
+.badge-sev-high {
+  background: #dc2626;
+}
+
+.badge-sev-critical {
+  background: #7f1d1d;
+}
+
+.badge-status-new {
+  background: #2563eb;
+}
+
+.badge-status-closed {
+  background: #6b7280;
+}
+
+.badge-status-jira-ticket {
+  background: #9333ea;
+}
+
 section {
   margin-top: 32px;
 }

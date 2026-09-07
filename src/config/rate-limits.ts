@@ -13,6 +13,7 @@ export interface RateLimitsConfig {
   readonly apiKeyUse: RateLimitConfig;
   readonly jiraConnect: RateLimitConfig;
   readonly jiraProjects: RateLimitConfig;
+  readonly itemCreate: RateLimitConfig;
 }
 
 export const DEFAULT_RATE_LIMITS: RateLimitsConfig = {
@@ -25,6 +26,7 @@ export const DEFAULT_RATE_LIMITS: RateLimitsConfig = {
   apiKeyUse: { ttlMs: 60_000, limit: 60 },
   jiraConnect: { ttlMs: 60_000, limit: 10 },
   jiraProjects: { ttlMs: 60_000, limit: 30 },
+  itemCreate: { ttlMs: 60_000, limit: 30 },
 } as const;
 
 export function getRateLimitConfig(): RateLimitsConfig {
@@ -100,6 +102,14 @@ export function getRateLimitConfig(): RateLimitsConfig {
       limit:
         Number(process.env.RATE_LIMIT_JIRA_PROJECTS_LIMIT) ||
         DEFAULT_RATE_LIMITS.jiraProjects.limit,
+    },
+    itemCreate: {
+      ttlMs:
+        Number(process.env.RATE_LIMIT_ITEM_CREATE_TTL_MS) ||
+        DEFAULT_RATE_LIMITS.itemCreate.ttlMs,
+      limit:
+        Number(process.env.RATE_LIMIT_ITEM_CREATE_LIMIT) ||
+        DEFAULT_RATE_LIMITS.itemCreate.limit,
     },
   };
 }

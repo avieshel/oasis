@@ -704,8 +704,9 @@ static assets and served by Nest (`useStaticAssets`), dev via Vite proxy
 core (§7.1 invariants); Jira features (4–7) are modeled for a single user and
 "just work" once identity is airtight.**
 
-Slices 1–7 are **implemented, tested, and committed**. State as of the API-key
-slice (`17e95b2`, after `3ee218a`/`ecdc32d`):
+Slices 1–9 are **implemented, tested, and committed**. Current state: the
+**Oasis items** findings list trust boundary is demonstrated end-to-end
+(seed → tenant-scoped list → random ingestion → triage → Jira ticket link).
 
 1. ✅ Repo skeleton: NestJS app + Prisma + config (zod env) + crypto + logging +
    `client/` Vite scaffold (proxy wired, placeholder page).
@@ -736,7 +737,20 @@ slice (`17e95b2`, after `3ee218a`/`ecdc32d`):
    tenants & users, inline table UI, user password reset (kills sessions),
    cascade deletes, `audit_log` entries, disabled-mode 403. `users.name`
    column added. 16-test `test/admin.spec.ts`; full suite 62.
-9. ⏳ **Next slice**: expose per-key Jira status/`last_used_at` in the API-keys
-   UI, apply `ticketCreateUi` throttle to the UI create/recent routes.
-10. ⏳ README + design-decisions doc; reviewer distribution via Docker image
+9. ✅ **Oasis items list (findings)** — the tenant-scoped "single pane of
+   glass": items are scanner messages ingested into `oasis_items`
+   (scanner/item_type/title/severity/status `new|closed|jira-ticket`,
+   optional `jira_key`/`jira_url` link). Home page (post-login) shows the
+   table with a lazy per-tenant seed (5 canonical items incl. one demo
+   `jira-ticket` link), status+severity query filters, `GET /items/summary`
+   chips, **`POST /items/random`** ("generate random item" button),
+   `PATCH /items/:id` (close/reopen) and `POST /items/:id/ticket`
+   (creates a Jira finding ticket as the user principal, flips the item to
+   `jira-ticket`, stores the ticket key/url → rendered as a link). All
+   tenant-scoped in the repo; triage audited (`item_generate` /
+   `item_status_update` / `item_ticket_create`); `itemCreate` rate limit
+   added. 10-test `test/items.spec.ts`; full suite 72.
+10. ⏳ **Next slice**: expose per-key Jira status/`last_used_at` in the API-keys
+    UI, apply `ticketCreateUi` throttle to the UI create/recent routes.
+11. ⏳ README + design-decisions doc; reviewer distribution via Docker image
     (tracked as GitHub issue #11).

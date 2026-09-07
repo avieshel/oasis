@@ -17,6 +17,9 @@ export const AuditAction = {
   ADMIN_USER_CREATE: 'admin_user_create',
   ADMIN_USER_UPDATE: 'admin_user_update',
   ADMIN_USER_DELETE: 'admin_user_delete',
+  ITEM_GENERATE: 'item_generate',
+  ITEM_STATUS_UPDATE: 'item_status_update',
+  ITEM_TICKET_CREATE: 'item_ticket_create',
 } as const;
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];

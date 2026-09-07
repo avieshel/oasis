@@ -12,8 +12,11 @@ Agent guide for the React client (Vite SPA in `client/`).
   - `App.tsx` — react-router-dom `<BrowserRouter>` routes:
     - `/login` — `<AuthPage mode="login" />`
     - `/signup` — `<AuthPage mode="signup" />`
-    - `/` — `<HomePage />` (session-guarded, redirects to `/login`; links to
-      `/jira` and `/api-keys`)
+    - `/` — `<HomePage />` (session-guarded, redirects to `/login`; nav links to
+      `/jira`, `/api-keys`, `/admin` when enabled; renders the **Oasis items
+      table** with status/severity filters, summary chips, "Generate random
+      item" button, Close/Reopen, and per-item "Create Jira ticket" with an
+      inline project picker — linked tickets render as a Jira link)
     - `/jira` — `<JiraPage />` (connect form, project select, create-ticket
       form, recent-tickets list with Load recent / Refresh, disconnect)
     - `/api-keys` — `<ApiKeysPage />` (mint key with optional
@@ -25,12 +28,14 @@ Agent guide for the React client (Vite SPA in `client/`).
       `enabled`)
   - `pages/AuthPage.tsx` — shared login/signup form (useCurrentUser redirect,
     error display, auto-login on signup)
-  - `pages/HomePage.tsx` — displays email, logout button, nav links
+  - `pages/HomePage.tsx` — items dashboard: summary chips, filter selects,
+    sort-free table with severity/status badges, jira link column, actions
   - `pages/JiraPage.tsx`, `pages/ApiKeysPage.tsx` — feature pages (see
     `Jira-Client-Context.md` / `Rest-Api-Context.md`)
   - `api/client.ts` — typed `fetch` wrapper: sends `credentials: 'same-origin'`,
     caches CSRF token, attaches `x-csrf-token` header on all mutating calls
-  - `api/auth.ts`, `api/jira.ts`, `api/keys.ts` — typed wrappers per feature
+  - `api/auth.ts`, `api/jira.ts`, `api/keys.ts`, `api/items.ts` — typed
+    wrappers per feature
   - `hooks/useCurrentUser.ts` — fetches `GET /api/app/auth/me`, returns
     `{ status, user }` state
   - `index.css` — minimal page/form styles

@@ -12,6 +12,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { JiraModule } from './modules/jira/jira.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { ItemsModule } from './modules/items/item.module';
 import { CsrfGuard } from './modules/auth/csrf.guard';
 import { AppExceptionFilter } from './app/errors';
 
@@ -46,6 +47,7 @@ import { AppExceptionFilter } from './app/errors';
     JiraModule,
     ApiKeysModule,
     AdminModule,
+    ItemsModule,
   ],
   providers: [
     PrismaService,

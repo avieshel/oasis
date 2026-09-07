@@ -147,3 +147,42 @@ export const apiKeyCreateSchema = z.object({
 });
 
 export type ApiKeyCreateInput = z.infer<typeof apiKeyCreateSchema>;
+
+export const ITEM_STATUSES = ['new', 'closed', 'jira-ticket'] as const;
+export const ITEM_SEVERITIES = [
+  'info',
+  'low',
+  'medium',
+  'high',
+  'critical',
+] as const;
+export const MAX_ITEM_TYPE_LENGTH = 64;
+export const MAX_ITEMS_LIMIT = 50;
+export const DEFAULT_ITEMS_LIMIT = 10;
+
+export const itemsQuerySchema = z.object({
+  status: z.enum(ITEM_STATUSES).optional(),
+  severity: z.enum(ITEM_SEVERITIES).optional(),
+  type: z.string().min(1).max(MAX_ITEM_TYPE_LENGTH).optional(),
+  limit: z.coerce.number().int().min(1).max(MAX_ITEMS_LIMIT).optional(),
+});
+
+export type ItemsQuery = z.infer<typeof itemsQuerySchema>;
+
+export const itemParamSchema = z.object({
+  id: z.string().min(1).max(MAX_ENTITY_ID_LENGTH),
+});
+
+export const itemUpdateSchema = z.object({
+  status: z.enum(ITEM_STATUSES).refine((status) => status !== 'jira-ticket', {
+    message: 'status must be new or closed',
+  }),
+});
+
+export type ItemUpdate = z.infer<typeof itemUpdateSchema>;
+
+export const itemTicketCreateSchema = z.object({
+  project_key: projectKeySchema,
+});
+
+export type ItemTicketCreate = z.infer<typeof itemTicketCreateSchema>;

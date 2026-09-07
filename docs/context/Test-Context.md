@@ -29,6 +29,11 @@ Agent guide for automated tests (vitest + supertest + shell harness).
   user create/list/filter by tenant, duplicate email 400, missing tenant 404,
   managed user login, password reset kills sessions, user update, user delete
   cascade, tenant delete cascade, disabled-mode 403.
+- `test/items.spec.ts` (10 specs): session-required, per-tenant lazy seed (5
+  items incl. a `jira-ticket` link), status/severity/limit filters, invalid
+  filter 400, summary counts, `POST /items/random` + audit, close/reopen +
+  invalid status 400, unknown id 404, item → Jira ticket creation (mocked Jira)
+  flips status/link, cross-tenant isolation + cross-tenant PATCH 404.
 - All specs boot their own `AppModule` (with `cookieParser` + `setGlobalPrefix`)
   so each describe has an isolated server/DB.
 - Run: `npm test`. Full gate: `npm run check` (lint + typecheck + test). CI runs
