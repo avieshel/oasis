@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, Navigate } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import {
   connectKeyJira,
@@ -12,7 +11,6 @@ import {
   type ApiKeyMeta,
 } from '../api/keys';
 import type { JiraConnectionState } from '../api/jira';
-import { useCurrentUser } from '../hooks/useCurrentUser';
 
 function parseProjectList(raw: string): string[] | null {
   const keys = raw
@@ -22,8 +20,7 @@ function parseProjectList(raw: string): string[] | null {
   return keys.length === 0 ? null : keys;
 }
 
-export function ApiKeysPage(): JSX.Element {
-  const auth = useCurrentUser();
+export function ApiKeysSettings(): JSX.Element {
   const [keys, setKeys] = useState<ApiKeyMeta[]>([]);
   const [name, setName] = useState('');
   const [projectsText, setProjectsText] = useState('');
@@ -79,13 +76,6 @@ export function ApiKeysPage(): JSX.Element {
         setError(err instanceof Error ? err.message : 'unable to load keys'),
       );
   }, []);
-
-  if (auth.status === 'anonymous') {
-    return <Navigate to="/login" replace />;
-  }
-  if (auth.status === 'loading') {
-    return <main className="page">Checking session…</main>;
-  }
 
   const handleCreate = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
@@ -157,9 +147,7 @@ export function ApiKeysPage(): JSX.Element {
   };
 
   return (
-    <main className="page">
-      <Link to="/">← Back</Link>
-      <h1>API Keys</h1>
+    <section>
       <p>
         Keys let automated systems create tickets via{' '}
         <code>POST /api/v1/tickets</code> with{' '}
@@ -314,6 +302,6 @@ export function ApiKeysPage(): JSX.Element {
           );
         })
       )}
-    </main>
+    </section>
   );
 }

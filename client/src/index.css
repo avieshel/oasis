@@ -185,6 +185,24 @@ select {
   font-weight: 600;
 }
 
+.warn {
+  color: #9a6700;
+  font-weight: 600;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 8px;
+}
+
+textarea {
+  padding: 8px;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-family: inherit;
+}
+
 form {
   display: grid;
   gap: 12px;

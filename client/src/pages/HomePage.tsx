@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { logout } from '../api/auth';
 import { adminStatus } from '../api/admin';
-import { listProjects, type JiraProjectSummary } from '../api/jira';
+import { listProjects, jiraStatus, type JiraProjectSummary } from '../api/jira';
 import {
   createItemTicket,
   generateRandomItem,
@@ -51,6 +51,13 @@ export function HomePage(): JSX.Element {
   const [projectsFailed, setProjectsFailed] = useState(false);
   const [ticketTarget, setTicketTarget] = useState<string | null>(null);
   const [ticketProject, setTicketProject] = useState('');
+  const [jiraConnected, setJiraConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    jiraStatus()
+      .then((state) => setJiraConnected(state.connected))
+      .catch(() => setJiraConnected(false));
+  }, []);
 
   useEffect(() => {
     adminStatus()
@@ -155,9 +162,15 @@ export function HomePage(): JSX.Element {
       setProjectsFailed(false);
       setTicketProject(loaded[0]?.key ?? '');
       setTicketTarget(id);
-    } catch {
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.body.error === 'JIRA_NOT_CONNECTED') {
+        void navigate('/settings');
+        return;
+      }
       setProjectsFailed(true);
-      setError('Connect Jira first to create tickets.');
+      setError(
+        err instanceof ApiError ? err.message : 'unable to load projects',
+      );
     }
   };
 
@@ -200,10 +213,17 @@ export function HomePage(): JSX.Element {
       </div>
 
       <nav className="nav-links">
-        <Link to="/jira">Jira integration</Link>{' '}
-        <Link to="/api-keys">API keys</Link>{' '}
+        <Link to="/settings">Settings</Link>{' '}
         {adminEnabled === true && <Link to="/admin">Admin</Link>}
       </nav>
+
+      {jiraConnected === false && (
+        <p className="warn">
+          No Jira connection yet —{' '}
+          <Link to="/settings">set one up in Settings</Link> to create tickets
+          from these findings.
+        </p>
+      )}
 
       <section>
         <div className="row-between">
@@ -253,7 +273,7 @@ export function HomePage(): JSX.Element {
               ))}
             </select>
           </label>
-          {projectsFailed && <Link to="/jira">Connect Jira…</Link>}
+          {projectsFailed && <Link to="/settings">Open Settings…</Link>}
         </div>
 
         {error !== null && <p className="err">{error}</p>}

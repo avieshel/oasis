@@ -13,15 +13,19 @@ Agent guide for the React client (Vite SPA in `client/`).
     - `/login` — `<AuthPage mode="login" />`
     - `/signup` — `<AuthPage mode="signup" />`
     - `/` — `<HomePage />` (session-guarded, redirects to `/login`; nav links to
-      `/jira`, `/api-keys`, `/admin` when enabled; renders the **Oasis items
-      table** with status/severity filters, summary chips, "Generate random
-      item" button, Close/Reopen, and per-item "Create Jira ticket" with an
-      inline project picker — linked tickets render as a Jira link)
-    - `/jira` — `<JiraPage />` (connect form, project select, create-ticket
-      form, recent-tickets list with Load recent / Refresh, disconnect)
-    - `/api-keys` — `<ApiKeysPage />` (mint key with optional
-      `allowed_project_keys` scoping, shows the raw key **once**, per-key
-      Jira service-account tie form + disconnect, revoke)
+      `/settings` and `/admin` when enabled; renders the **Oasis items table**
+      with status/severity filters, summary chips, "Generate random item"
+      button, Close/Reopen, and per-item "Create Jira ticket" with an inline
+      project picker — linked tickets render as a Jira link; when no Jira
+      connection exists a banner links to Settings, and create-ticket attempts
+      auto-redirect to `/settings`)
+    - `/settings` — `<SettingsPage />` with **Jira connection** / **API keys**
+      tabs (`?tab=keys` deep-links the API-keys tab): connect/disconnect,
+      project select + create-ticket form, recent-tickets list with Load
+      recent / Refresh; mint key with optional `allowed_project_keys` scoping,
+      raw key shown **once**, per-key Jira service-account tie + revoke
+    - `/jira` → `<Navigate to="/settings" />`; `/api-keys` →
+      `<Navigate to="/settings?tab=keys" />` (kept as redirects for old links)
     - `/admin` — `<AdminPage />` (tenant & user CRUD tables with inline
       create/edit/delete, user password reset, tenant filter — see
       `Admin-Context.md`; link shown only when the status endpoint reports
@@ -29,9 +33,10 @@ Agent guide for the React client (Vite SPA in `client/`).
   - `pages/AuthPage.tsx` — shared login/signup form (useCurrentUser redirect,
     error display, auto-login on signup)
   - `pages/HomePage.tsx` — items dashboard: summary chips, filter selects,
-    sort-free table with severity/status badges, jira link column, actions
-  - `pages/JiraPage.tsx`, `pages/ApiKeysPage.tsx` — feature pages (see
-    `Jira-Client-Context.md` / `Rest-Api-Context.md`)
+    table with severity/status badges, jira link column, triage actions
+  - `pages/SettingsPage.tsx` — guarded settings shell with Jira/API-keys tabs;
+    tab sections are the page-chrome-free `JiraSettings` / `ApiKeysSettings`
+    components (see `Jira-Client-Context.md` / `Rest-Api-Context.md`)
   - `api/client.ts` — typed `fetch` wrapper: sends `credentials: 'same-origin'`,
     caches CSRF token, attaches `x-csrf-token` header on all mutating calls
   - `api/auth.ts`, `api/jira.ts`, `api/keys.ts`, `api/items.ts` — typed

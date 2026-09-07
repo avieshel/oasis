@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, Navigate } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import {
   connectJira,
@@ -13,10 +12,8 @@ import {
   type JiraProjectSummary,
   type JiraRecentTicket,
 } from '../api/jira';
-import { useCurrentUser } from '../hooks/useCurrentUser';
 
-export function JiraPage(): JSX.Element {
-  const auth = useCurrentUser();
+export function JiraSettings(): JSX.Element {
   const [connection, setConnection] = useState<JiraConnectionState | null>(
     null,
   );
@@ -53,13 +50,6 @@ export function JiraPage(): JSX.Element {
     if (state.siteUrl) {
       setSiteUrl(state.siteUrl);
     }
-  }
-
-  if (auth.status === 'anonymous') {
-    return <Navigate to="/login" replace />;
-  }
-  if (auth.status === 'loading') {
-    return <main className="page">Checking session…</main>;
   }
 
   const handleConnect = async (
@@ -132,10 +122,7 @@ export function JiraPage(): JSX.Element {
   };
 
   return (
-    <main className="page">
-      <Link to="/">← Back</Link>
-      <h1>Jira Integration</h1>
-
+    <section>
       {connection?.connected ? (
         <>
           <p className="ok">
@@ -267,6 +254,6 @@ export function JiraPage(): JSX.Element {
       {error !== null && connection?.connected && (
         <p className="err">{error}</p>
       )}
-    </main>
+    </section>
   );
 }
