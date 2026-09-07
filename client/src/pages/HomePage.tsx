@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { logout } from '../api/auth';
 import { adminStatus } from '../api/admin';
-import { listProjects, jiraStatus, type JiraProjectSummary } from '../api/jira';
+import {
+  createTicket,
+  jiraStatus,
+  listProjects,
+  listRecentTickets,
+  type JiraProjectSummary,
+  type JiraRecentTicket,
+} from '../api/jira';
 import {
   createItemTicket,
   generateRandomItem,
@@ -52,12 +60,41 @@ export function HomePage(): JSX.Element {
   const [ticketTarget, setTicketTarget] = useState<string | null>(null);
   const [ticketProject, setTicketProject] = useState('');
   const [jiraConnected, setJiraConnected] = useState<boolean | null>(null);
+  const [manualProject, setManualProject] = useState('');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [recent, setRecent] = useState<JiraRecentTicket[]>([]);
 
   useEffect(() => {
     jiraStatus()
       .then((state) => setJiraConnected(state.connected))
       .catch(() => setJiraConnected(false));
   }, []);
+
+  useEffect(() => {
+    if (jiraConnected !== true) {
+      return;
+    }
+    listProjects()
+      .then((loaded) => {
+        setProjects(loaded);
+        setProjectsFailed(false);
+        setManualProject(loaded[0]?.key ?? '');
+      })
+      .catch((err: unknown) => {
+        if (
+          err instanceof ApiError &&
+          err.body.error === 'JIRA_NOT_CONNECTED'
+        ) {
+          setJiraConnected(false);
+          return;
+        }
+        setProjectsFailed(true);
+        setError(
+          err instanceof Error ? err.message : 'unable to load projects',
+        );
+      });
+  }, [jiraConnected]);
 
   useEffect(() => {
     adminStatus()
@@ -190,6 +227,41 @@ export function HomePage(): JSX.Element {
     }
   };
 
+  const handleCreateManual = async (
+    e: FormEvent<HTMLFormElement>,
+  ): Promise<void> => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await createTicket(manualProject, title, description);
+      setTitle('');
+      setDescription('');
+      setRecent(await listRecentTickets(manualProject));
+    } catch (err: unknown) {
+      setError(
+        err instanceof ApiError ? err.message : 'unable to create ticket',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleLoadRecent = async (refresh = false): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (manualProject === '') {
+        throw new Error('Select a project first');
+      }
+      setRecent(await listRecentTickets(manualProject, refresh));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'unable to load tickets');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const chipClass = 'chip';
 
   return (
@@ -223,6 +295,49 @@ export function HomePage(): JSX.Element {
           <Link to="/settings">set one up in Settings</Link> to create tickets
           from these findings.
         </p>
+      )}
+
+      {jiraConnected === true && (
+        <section>
+          <h2>Create ticket</h2>
+          <form onSubmit={(e) => void handleCreateManual(e)}>
+            <label>
+              Project
+              <select
+                value={manualProject}
+                onChange={(e) => setManualProject(e.target.value)}
+              >
+                <option value="">Select a project…</option>
+                {projects?.map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.key} — {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Title
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Description
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                required
+              />
+            </label>
+            {error !== null && <p className="err">{error}</p>}
+            <button type="submit" disabled={busy || manualProject === ''}>
+              {busy ? 'Creating…' : 'Create ticket'}
+            </button>
+          </form>
+        </section>
       )}
 
       <section>
@@ -401,6 +516,38 @@ export function HomePage(): JSX.Element {
           Showing {items.length} of {total} items.
         </p>
       </section>
+
+      {jiraConnected === true && (
+        <section>
+          <h2>Recent tickets</h2>
+          <button
+            type="button"
+            disabled={busy || manualProject === ''}
+            onClick={() => void handleLoadRecent(false)}
+          >
+            Load recent
+          </button>{' '}
+          <button
+            type="button"
+            disabled={busy || manualProject === ''}
+            onClick={() => void handleLoadRecent(true)}
+          >
+            Refresh
+          </button>
+          {recent.length > 0 && (
+            <ul>
+              {recent.map((t) => (
+                <li key={t.key}>
+                  <a href={t.url} target="_blank" rel="noreferrer">
+                    {t.key}
+                  </a>{' '}
+                  — {t.title}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
     </main>
   );
 }

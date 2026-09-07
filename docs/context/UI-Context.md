@@ -18,12 +18,15 @@ Agent guide for the React client (Vite SPA in `client/`).
       button, Close/Reopen, and per-item "Create Jira ticket" with an inline
       project picker — linked tickets render as a Jira link; when no Jira
       connection exists a banner links to Settings, and create-ticket attempts
-      auto-redirect to `/settings`)
+      auto-redirect to `/settings`; when connected it also hosts the **manual
+      create-ticket form** (project select + title + description) and a
+      **recent tickets** list with Load recent / Refresh)
     - `/settings` — `<SettingsPage />` with **Jira connection** / **API keys**
-      tabs (`?tab=keys` deep-links the API-keys tab): connect/disconnect,
-      project select + create-ticket form, recent-tickets list with Load
-      recent / Refresh; mint key with optional `allowed_project_keys` scoping,
-      raw key shown **once**, per-key Jira service-account tie + revoke
+      tabs (`?tab=keys` deep-links the API-keys tab): connect/disconnect and
+      status for the user's Jira connection; mint key with optional
+      `allowed_project_keys` scoping, raw key shown **once**, per-key Jira
+      service-account tie + revoke. No ticket creation here — that lives on the
+      findings page.
     - `/jira` → `<Navigate to="/settings" />`; `/api-keys` →
       `<Navigate to="/settings?tab=keys" />` (kept as redirects for old links)
     - `/admin` — `<AdminPage />` (tenant & user CRUD tables with inline
@@ -32,8 +35,9 @@ Agent guide for the React client (Vite SPA in `client/`).
       `enabled`)
   - `pages/AuthPage.tsx` — shared login/signup form (useCurrentUser redirect,
     error display, auto-login on signup)
-  - `pages/HomePage.tsx` — items dashboard: summary chips, filter selects,
-    table with severity/status badges, jira link column, triage actions
+  - `pages/HomePage.tsx` — findings dashboard: summary chips, filter selects,
+    manual create-ticket form (project + title + description), table with
+    severity/status badges, jira link column, triage actions, recent tickets
   - `pages/SettingsPage.tsx` — guarded settings shell with Jira/API-keys tabs;
     tab sections are the page-chrome-free `JiraSettings` / `ApiKeysSettings`
     components (see `Jira-Client-Context.md` / `Rest-Api-Context.md`)
