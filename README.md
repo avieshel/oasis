@@ -19,6 +19,25 @@ Open:
 | Swagger (REST) | http://localhost:3000/swagger |
 | Health         | http://localhost:3000/healthz |
 
+## Security: APP_SECRET
+
+`APP_SECRET` is the master encryption key for Jira tokens at rest (AES-256-GCM).
+If you run `docker compose up` without setting it, the image generates an
+**ephemeral secret** automatically — every container gets a different key. This
+is safe for trying the app, but **stored Jira tokens will become undecryptable
+after a restart** because the next container will generate a new key.
+
+To keep your Jira connections working across restarts, pin a fixed value:
+
+```sh
+echo 'APP_SECRET=your-own-64-char-random-string-here!!!!!!!!!' >> .env
+docker compose up -d
+```
+
+Set one at least 32 characters long from a cryptographically random source
+(e.g. `openssl rand -base64 48`). Rotating it invalidates all stored Jira
+tokens — connections must be re-established afterwards.
+
 The image ships with no data. Demo users (created by `seed`, password
 `demo1234` for all): `acme[EMAIL]`, `globex[EMAIL]`. `ALLOW_OPEN_SIGNUP`
 and `ALLOW_ADMIN` are enabled, so you can also create users from the UI
