@@ -9,6 +9,8 @@ export const AuditAction = {
   JIRA_CONNECT: 'jira_connect',
   JIRA_DISCONNECT: 'jira_disconnect',
   JIRA_TICKET_CREATE: 'jira_ticket_create',
+  API_KEY_CREATE: 'api_key_create',
+  API_KEY_REVOKE: 'api_key_revoke',
 } as const;
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];

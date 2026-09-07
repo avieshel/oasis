@@ -15,6 +15,9 @@ export class CsrfGuard implements CanActivate {
     if (SAFE_METHODS.has(request.method)) {
       return true;
     }
+    if (request.header('Authorization')?.startsWith('Bearer ')) {
+      return true;
+    }
     if (!csrfOriginAllowed(request.header('Origin'))) {
       throw new CsrfInvalidError();
     }

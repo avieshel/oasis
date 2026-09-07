@@ -36,20 +36,21 @@ model sessions {
 }
 
 model api_keys {
-  id         String    @id @default(cuid())
-  tenant_id  String
-  user_id    String
-  name       String
-  key_hash   String    @unique
-  created_at DateTime  @default(now())
-  last_used_at DateTime?
-  revoked_at  DateTime?
+  id                   String    @id @default(cuid())
+  tenant_id            String
+  name                 String
+  key_hash             String    @unique
+  allowed_project_keys String?
+  created_at           DateTime  @default(now())
+  last_used_at         DateTime?
+  revoked_at           DateTime?
 }
 
 model jira_connections {
   id                     String    @id @default(cuid())
   tenant_id              String
-  user_id                String    @unique
+  user_id                String?   @unique
+  api_key_id             String?   @unique
   mode                   String
   cloud_id               String?
   site_url               String?
@@ -69,7 +70,8 @@ model jira_connections {
 model tickets_cache {
   id               String    @id @default(cuid())
   tenant_id        String
-  user_id          String
+  user_id          String?
+  api_key_id       String?
   jira_site        String
   project_key      String
   issue_key        String
@@ -79,6 +81,7 @@ model tickets_cache {
   reconciled_at    DateTime?
 
   @@unique([user_id, jira_site, project_key, issue_key])
+  @@unique([api_key_id, jira_site, project_key, issue_key])
 }
 
 model audit_log {

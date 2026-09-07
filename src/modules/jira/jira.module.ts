@@ -9,5 +9,6 @@ import { JiraController } from './jira.controller';
   imports: [AuthModule],
   controllers: [JiraController],
   providers: [JiraRepository, JiraService, PrismaService],
+  exports: [JiraService],
 })
 export class JiraModule {}

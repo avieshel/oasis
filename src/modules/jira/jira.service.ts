@@ -5,7 +5,7 @@ import { openSecret, sealSecret } from '../../infra/crypto';
 import { JiraNotConnectedError, ProjectNotFoundError } from '../../app/errors';
 import { buildAdfDocument } from './jira.adf';
 import { JiraClient, type JiraProjectSummary } from './jira.client';
-import { JiraRepository } from './jira.repository';
+import { JiraRepository, type JiraPrincipal } from './jira.repository';
 import {
   JIRA_ISSUE_TYPE_TASK,
   JIRA_LABEL_FINDING,
@@ -66,9 +66,12 @@ export class JiraService {
 
   private async clientFor(
     tenantId: string,
-    userId: string,
+    principal: JiraPrincipal,
   ): Promise<JiraClient> {
-    const connection = await this.jiraRepository.findByUser(tenantId, userId);
+    const connection = await this.jiraRepository.findConnection(
+      tenantId,
+      principal,
+    );
     if (
       !connection ||
       connection.mode !== 'api_token' ||
@@ -91,9 +94,13 @@ export class JiraService {
     });
   }
 
+  private principalId(principal: JiraPrincipal): string {
+    return principal.kind === 'user' ? principal.userId : principal.apiKeyId;
+  }
+
   async connect(
     tenantId: string,
-    userId: string,
+    principal: JiraPrincipal,
     input: { siteUrl: string; email: string; apiToken: string },
     ctx: JiraAuditContext,
   ): Promise<JiraConnectionState> {
@@ -113,18 +120,18 @@ export class JiraService {
     }
 
     const sealed = sealSecret(input.apiToken, this.appSecret());
-    await this.jiraRepository.upsertApiTokenConnection(tenantId, userId, {
+    await this.jiraRepository.upsertApiTokenConnection(tenantId, principal, {
       siteUrl: probe.origin,
       email: input.email,
       apiTokenCipher: sealed.cipher,
       apiTokenNonce: sealed.nonce,
       cloudId,
     });
-    this.projectsCache.delete(this.cacheKey(tenantId, userId));
+    this.projectsCache.delete(this.cacheKey(tenantId, principal));
 
     await this.audit.write({
       tenantId,
-      userId,
+      userId: this.principalId(principal),
       action: AuditAction.JIRA_CONNECT,
       target: probe.origin,
       ip: ctx.ip ?? null,
@@ -143,14 +150,14 @@ export class JiraService {
 
   async disconnect(
     tenantId: string,
-    userId: string,
+    principal: JiraPrincipal,
     ctx: JiraAuditContext,
   ): Promise<{ status: string }> {
-    await this.jiraRepository.deleteByUser(tenantId, userId);
-    this.projectsCache.delete(this.cacheKey(tenantId, userId));
+    await this.jiraRepository.deleteConnection(tenantId, principal);
+    this.projectsCache.delete(this.cacheKey(tenantId, principal));
     await this.audit.write({
       tenantId,
-      userId,
+      userId: this.principalId(principal),
       action: AuditAction.JIRA_DISCONNECT,
       target: 'jira_connection',
       ip: ctx.ip ?? null,
@@ -159,8 +166,14 @@ export class JiraService {
     return { status: 'disconnected' };
   }
 
-  async status(tenantId: string, userId: string): Promise<JiraConnectionState> {
-    const connection = await this.jiraRepository.findByUser(tenantId, userId);
+  async status(
+    tenantId: string,
+    principal: JiraPrincipal,
+  ): Promise<JiraConnectionState> {
+    const connection = await this.jiraRepository.findConnection(
+      tenantId,
+      principal,
+    );
     if (
       !connection ||
       connection.mode !== 'api_token' ||
@@ -179,15 +192,15 @@ export class JiraService {
 
   async listProjects(
     tenantId: string,
-    userId: string,
+    principal: JiraPrincipal,
   ): Promise<JiraProjectSummary[]> {
-    const key = this.cacheKey(tenantId, userId);
+    const key = this.cacheKey(tenantId, principal);
     const cached = this.projectsCache.get(key);
     if (cached !== undefined && cached.expiresAt > Date.now()) {
       return cached.projects;
     }
 
-    const client = await this.clientFor(tenantId, userId);
+    const client = await this.clientFor(tenantId, principal);
     const projects = await client.listProjects();
     this.projectsCache.set(key, {
       expiresAt: Date.now() + JIRA_PROJECTS_CACHE_TTL_MS,
@@ -196,17 +209,19 @@ export class JiraService {
     return projects;
   }
 
-  private cacheKey(tenantId: string, userId: string): string {
-    return `${tenantId}:${userId}`;
+  private cacheKey(tenantId: string, principal: JiraPrincipal): string {
+    return principal.kind === 'user'
+      ? `${tenantId}:user:${principal.userId}`
+      : `${tenantId}:key:${principal.apiKeyId}`;
   }
 
   async createTicket(
     tenantId: string,
-    userId: string,
+    principal: JiraPrincipal,
     input: { projectKey: string; title: string; description: string },
     ctx: JiraAuditContext,
   ): Promise<JiraCreateResult> {
-    const client = await this.clientFor(tenantId, userId);
+    const client = await this.clientFor(tenantId, principal);
 
     const projects = await client.listProjects();
     const projectKnown = projects.some((p) => p.key === input.projectKey);
@@ -224,7 +239,7 @@ export class JiraService {
     });
 
     const now = new Date();
-    await this.jiraRepository.upsertRecentTicket(tenantId, userId, {
+    await this.jiraRepository.upsertRecentTicket(tenantId, principal, {
       jiraSite: client.origin,
       projectKey: input.projectKey,
       issueKey: created.key,
@@ -236,7 +251,7 @@ export class JiraService {
 
     await this.audit.write({
       tenantId,
-      userId,
+      userId: this.principalId(principal),
       action: AuditAction.JIRA_TICKET_CREATE,
       target: created.key,
       ip: ctx.ip ?? null,
@@ -251,36 +266,37 @@ export class JiraService {
 
   async listRecentTickets(
     tenantId: string,
-    userId: string,
+    principal: JiraPrincipal,
     projectKey: string,
     forcedRefresh = false,
   ): Promise<JiraRecentTicket[]> {
     const cached = await this.jiraRepository.findRecentTickets(
       tenantId,
-      userId,
+      principal,
       projectKey,
       JIRA_RECENT_TICKETS_LIMIT,
     );
     const reconciledAt = await this.jiraRepository.lastReconciledAt(
       tenantId,
-      userId,
+      principal,
       projectKey,
     );
 
     if (forcedRefresh) {
-      return this.refreshFromJira(tenantId, userId, projectKey);
+      return this.refreshFromJira(tenantId, principal, projectKey);
     }
 
     if (cached.length === 0) {
-      return this.refreshFromJira(tenantId, userId, projectKey);
+      return this.refreshFromJira(tenantId, principal, projectKey);
     }
 
     const isFresh =
       reconciledAt !== null &&
       Date.now() - reconciledAt.getTime() < this.cacheTtlMs();
     if (!isFresh) {
-      void this.refreshFromJira(tenantId, userId, projectKey).catch((error) =>
-        this.logger.warn('background recent-tickets refresh failed', error),
+      void this.refreshFromJira(tenantId, principal, projectKey).catch(
+        (error) =>
+          this.logger.warn('background recent-tickets refresh failed', error),
       );
     }
 
@@ -289,17 +305,17 @@ export class JiraService {
 
   private async refreshFromJira(
     tenantId: string,
-    userId: string,
+    principal: JiraPrincipal,
     projectKey: string,
   ): Promise<JiraRecentTicket[]> {
-    const client = await this.clientFor(tenantId, userId);
+    const client = await this.clientFor(tenantId, principal);
     const jql =
       `project = "${projectKey}" AND labels = "${JIRA_LABEL_FINDING}" ` +
       `ORDER BY created DESC`;
 
     const issues = await client.searchByJql(jql, JIRA_RECENT_TICKETS_LIMIT);
     const now = new Date();
-    await this.jiraRepository.syncRecentTickets(tenantId, userId, {
+    await this.jiraRepository.syncRecentTickets(tenantId, principal, {
       jiraSite: client.origin,
       projectKey,
       reconciledAt: now,

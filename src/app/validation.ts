@@ -6,6 +6,9 @@ export const MAX_TICKET_DESCRIPTION_LENGTH = 30_000;
 export const MAX_JIRA_SITE_URL_LENGTH = 255;
 export const MAX_API_TOKEN_LENGTH = 1024;
 
+export const MAX_API_KEY_NAME_LENGTH = 64;
+export const MAX_API_KEY_PROJECTS = 50;
+
 export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_PASSWORD_LENGTH = 128;
 
@@ -56,3 +59,13 @@ export const jiraConnectSchema = z.object({
 });
 
 export type JiraConnectInput = z.infer<typeof jiraConnectSchema>;
+
+export const apiKeyCreateSchema = z.object({
+  name: z.string().min(1).max(MAX_API_KEY_NAME_LENGTH),
+  allowed_project_keys: z
+    .array(projectKeySchema)
+    .max(MAX_API_KEY_PROJECTS)
+    .optional(),
+});
+
+export type ApiKeyCreateInput = z.infer<typeof apiKeyCreateSchema>;

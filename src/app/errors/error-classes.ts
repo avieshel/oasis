@@ -136,3 +136,11 @@ export class ApiKeyInvalidError extends AppError {
     super(ErrorCode.API_KEY_INVALID);
   }
 }
+
+export class ApiKeyProjectForbiddenError extends AppError {
+  constructor(projectKey: string) {
+    super(ErrorCode.API_KEY_PROJECT_FORBIDDEN, {
+      detail: `Project ${projectKey} is not allowed for this API key`,
+    });
+  }
+}

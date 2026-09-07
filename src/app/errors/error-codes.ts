@@ -17,6 +17,7 @@ export enum ErrorCode {
   PERMISSION_DENIED = 'PERMISSION_DENIED',
   API_KEY_REVOKED = 'API_KEY_REVOKED',
   API_KEY_INVALID = 'API_KEY_INVALID',
+  API_KEY_PROJECT_FORBIDDEN = 'API_KEY_PROJECT_FORBIDDEN',
   HTTP_ERROR = 'HTTP_ERROR',
 }
 
@@ -116,6 +117,11 @@ export const ERROR_DEFINITIONS: Readonly<Record<ErrorCode, ErrorDefinition>> = {
     code: ErrorCode.API_KEY_INVALID,
     statusCode: 401,
     defaultMessage: 'Invalid API key',
+  },
+  [ErrorCode.API_KEY_PROJECT_FORBIDDEN]: {
+    code: ErrorCode.API_KEY_PROJECT_FORBIDDEN,
+    statusCode: 403,
+    defaultMessage: 'API key is not allowed for this project',
   },
   [ErrorCode.HTTP_ERROR]: {
     code: ErrorCode.HTTP_ERROR,

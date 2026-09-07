@@ -50,7 +50,7 @@ export class JiraController {
     const body = jiraConnectSchema.parse(rawBody);
     return this.jiraService.connect(
       tenantId,
-      user.id,
+      { kind: 'user', userId: user.id },
       {
         siteUrl: body.site_url,
         email: body.email,
@@ -67,7 +67,11 @@ export class JiraController {
     @CurrentTenantId() tenantId: string,
     @Req() req: RequestWithSession,
   ) {
-    return this.jiraService.disconnect(tenantId, user.id, auditContext(req));
+    return this.jiraService.disconnect(
+      tenantId,
+      { kind: 'user', userId: user.id },
+      auditContext(req),
+    );
   }
 
   @Get('status')
@@ -75,7 +79,10 @@ export class JiraController {
     @CurrentUser() user: SessionUser,
     @CurrentTenantId() tenantId: string,
   ) {
-    return this.jiraService.status(tenantId, user.id);
+    return this.jiraService.status(tenantId, {
+      kind: 'user',
+      userId: user.id,
+    });
   }
 
   @Get('projects')
@@ -84,7 +91,10 @@ export class JiraController {
     @CurrentUser() user: SessionUser,
     @CurrentTenantId() tenantId: string,
   ) {
-    return this.jiraService.listProjects(tenantId, user.id);
+    return this.jiraService.listProjects(tenantId, {
+      kind: 'user',
+      userId: user.id,
+    });
   }
 
   @Post('tickets')
@@ -97,7 +107,7 @@ export class JiraController {
     const body = ticketCreateSchema.parse(rawBody);
     return this.jiraService.createTicket(
       tenantId,
-      user.id,
+      { kind: 'user', userId: user.id },
       {
         projectKey: body.project_key,
         title: body.title,
@@ -116,7 +126,7 @@ export class JiraController {
     const query = jiraRecentTicketsQuerySchema.parse(req.query);
     return this.jiraService.listRecentTickets(
       tenantId,
-      user.id,
+      { kind: 'user', userId: user.id },
       query.project_key,
       query.refresh,
     );

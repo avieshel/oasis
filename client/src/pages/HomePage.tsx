@@ -37,7 +37,8 @@ export function HomePage(): JSX.Element {
       </p>
       <p className="ok">Connected ✓</p>
       {error !== null && <p className="err">{error}</p>}
-      <Link to="/jira">Jira integration</Link>
+      <Link to="/jira">Jira integration</Link>{' '}
+      <Link to="/api-keys">API keys</Link>
       <div>
         <button
           type="button"

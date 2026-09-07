@@ -61,15 +61,22 @@ async function main(): Promise<void> {
     const siteOrigin = new URL(siteUrl).origin;
     const sealed = sealSecret(apiToken, config.APP_SECRET);
     const repository = new JiraRepository(prisma);
-    await repository.upsertApiTokenConnection(user.tenant_id, user.id, {
-      siteUrl: siteOrigin,
-      email,
-      apiTokenCipher: sealed.cipher,
-      apiTokenNonce: sealed.nonce,
-      cloudId: serverInfo.cloudId || null,
-    });
+    await repository.upsertApiTokenConnection(
+      user.tenant_id,
+      { kind: 'user', userId: user.id },
+      {
+        siteUrl: siteOrigin,
+        email,
+        apiTokenCipher: sealed.cipher,
+        apiTokenNonce: sealed.nonce,
+        cloudId: serverInfo.cloudId || null,
+      },
+    );
 
-    const stored = await repository.findByUser(user.tenant_id, user.id);
+    const stored = await repository.findConnection(user.tenant_id, {
+      kind: 'user',
+      userId: user.id,
+    });
     const roundTripOk =
       stored?.api_token_cipher != null &&
       stored.api_token_nonce != null &&
