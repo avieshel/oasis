@@ -274,7 +274,7 @@ describe('jira :: projects, tickets, recent', () => {
       const parsed = new URL(url);
       const jql = parsed.searchParams.get('jql');
       if (
-        parsed.pathname.endsWith('/rest/api/3/search') &&
+        parsed.pathname.endsWith('/rest/api/3/search/jql') &&
         jql !== null &&
         jql.includes('MYPRJ') &&
         jql.includes('identityhub-finding')
@@ -302,6 +302,50 @@ describe('jira :: projects, tickets, recent', () => {
     const items = bodyOf<Array<{ key: string; title: string }>>(res);
     expect(items[0].key).toBe('MYPRJ-2');
     expect(items[0].title).toBe('Another one');
+    resetFetch();
+  });
+
+  it('surfaces the Jira error message when JQL search fails', async () => {
+    mockFetch((url, init) => {
+      if (url === PROJECTS_URL) {
+        return jsonResponse({ values: [{ key: 'MYPRJ', name: 'My Project' }] });
+      }
+      if (url === ISSUE_URL && init?.method === 'POST') {
+        return jsonResponse({ id: '10003', key: 'MYPRJ-3', self: 'x' }, 201);
+      }
+      if (url.startsWith(`${SITE_URL}/rest/api/3/search/jql`)) {
+        return jsonResponse(
+          {
+            errorMessages: [
+              "The value 'identityhub-finding' does not exist for the field 'labels'.",
+            ],
+          },
+          400,
+        );
+      }
+      throw new Error(`unexpected url ${url} ${init?.method ?? ''}`);
+    });
+
+    const create = await request(server)
+      .post('/api/app/jira/tickets')
+      .set('Cookie', authedJar)
+      .set('x-csrf-token', csrfTokenValue)
+      .send({
+        project_key: 'MYPRJ',
+        title: 'Fix the bug',
+        description: 'The bug is here',
+      })
+      .expect(201);
+    expect(bodyOf<{ key: string }>(create).key).toBe('MYPRJ-3');
+
+    const recent = await request(server)
+      .get('/api/app/jira/tickets/recent?project_key=MYPRJ')
+      .set('Cookie', authedJar)
+      .set('x-csrf-token', csrfTokenValue)
+      .expect(502);
+    const body = bodyOf<{ error: string; detail: string }>(recent);
+    expect(body.error).toBe('UPSTREAM_ERROR');
+    expect(body.detail).toContain("'labels'");
     resetFetch();
   });
 

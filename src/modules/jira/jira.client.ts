@@ -43,7 +43,7 @@ export interface JiraClientOptions {
   apiToken: string;
 }
 
-export const JIRA_REQUEST_TIMEOUT_MS = 10_000;
+const JIRA_REQUEST_TIMEOUT_MS = 10_000;
 
 function normalizeSiteUrl(siteUrl: string): string {
   const url = new URL(siteUrl);
@@ -109,20 +109,54 @@ export class JiraClient {
         'Jira rate limit hit',
       );
     }
+
+    const detail = response.ok ? undefined : await this.errorDetail(response);
     if (response.status === 401) {
-      throw new UnauthorizedError('Jira rejected the credentials');
+      throw new UnauthorizedError(detail ?? 'Jira rejected the credentials');
     }
     if (response.status === 403) {
-      throw new PermissionDeniedError('Jira denied access');
+      throw new PermissionDeniedError(detail ?? 'Jira denied access');
     }
     if (response.status === 404) {
-      throw new NotFoundError('Jira resource', 'Jira resource not found');
+      throw new NotFoundError(
+        'Jira resource',
+        detail ?? 'Jira resource not found',
+      );
     }
     if (!response.ok) {
-      throw new UpstreamError(`Jira API error (HTTP ${response.status})`);
+      throw new UpstreamError(
+        detail ?? `Jira API error (HTTP ${response.status})`,
+      );
     }
 
     return (await response.json()) as T;
+  }
+
+  private async errorDetail(response: Response): Promise<string | undefined> {
+    try {
+      const raw = (await response.json()) as {
+        errorMessages?: unknown;
+        errors?: unknown;
+        message?: unknown;
+      };
+      const parts: string[] = [];
+      const messages = raw.errorMessages;
+      if (Array.isArray(messages)) {
+        parts.push(...messages.map((m) => String(m)));
+      }
+      const fields = raw.errors;
+      if (fields !== null && typeof fields === 'object') {
+        for (const [key, value] of Object.entries(fields)) {
+          parts.push(`${key}: ${String(value)}`);
+        }
+      }
+      if (raw.message !== undefined && typeof raw.message === 'string') {
+        parts.push(raw.message);
+      }
+      return parts.length > 0 ? parts.join('; ') : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   async getMyself(): Promise<JiraUserSelf> {
@@ -165,7 +199,7 @@ export class JiraClient {
     });
     const data = await this.request<{
       issues: JiraIssueSearchResult[];
-    }>(`/rest/api/3/search?${params.toString()}`);
+    }>(`/rest/api/3/search/jql?${params.toString()}`);
     return data.issues;
   }
 }

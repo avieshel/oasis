@@ -11,7 +11,7 @@ export class ApiError extends Error {
     readonly status: number,
     readonly body: ApiErrorBody,
   ) {
-    super(body.error);
+    super(body.detail ?? body.error);
   }
 }
 

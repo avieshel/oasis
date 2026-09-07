@@ -3,12 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { AuditAction, AuditService } from '../../infra/audit';
 import { openSecret, sealSecret } from '../../infra/crypto';
 import { JiraNotConnectedError, ProjectNotFoundError } from '../../app/errors';
-import { buildAdfDocument, type AdfDocument } from './jira.adf';
-import {
-  JiraClient,
-  type JiraIssueSearchResult,
-  type JiraProjectSummary,
-} from './jira.client';
+import { buildAdfDocument } from './jira.adf';
+import { JiraClient, type JiraProjectSummary } from './jira.client';
 import {
   JIRA_ISSUE_TYPE_TASK,
   JIRA_LABEL_FINDING,
@@ -166,10 +162,15 @@ export class JiraService {
     input: { projectKey: string; title: string; description: string },
     ctx: JiraAuditContext,
   ): Promise<JiraCreateResult> {
-    await this.assertProjectExists(tenantId, userId, input.projectKey);
     const client = await this.clientFor(tenantId, userId);
-    const description: AdfDocument = buildAdfDocument(input.description);
 
+    const projects = await client.listProjects();
+    const projectKnown = projects.some((p) => p.key === input.projectKey);
+    if (!projectKnown) {
+      throw new ProjectNotFoundError(input.projectKey);
+    }
+
+    const description = buildAdfDocument(input.description);
     const created = await client.createIssue({
       projectKey: input.projectKey,
       summary: input.title,
@@ -198,37 +199,18 @@ export class JiraService {
     userId: string,
     projectKey: string,
   ): Promise<JiraRecentTicket[]> {
-    const connection = await this.jiraRepository.findByUser(tenantId, userId);
-    if (!connection?.site_url) {
-      throw new JiraNotConnectedError();
-    }
+    const client = await this.clientFor(tenantId, userId);
     const jql =
       `project = "${projectKey}" AND labels = "${JIRA_LABEL_FINDING}" ` +
       `ORDER BY created DESC`;
 
-    const client = await this.clientFor(tenantId, userId);
-    const issues: JiraIssueSearchResult[] = await client.searchByJql(
-      jql,
-      JIRA_RECENT_TICKETS_LIMIT,
-    );
+    const issues = await client.searchByJql(jql, JIRA_RECENT_TICKETS_LIMIT);
 
     return issues.map((issue) => ({
       key: issue.key,
       title: issue.fields.summary ?? '',
-      url: `${connection.site_url}/browse/${issue.key}`,
+      url: `${client.origin}/browse/${issue.key}`,
       createdAt: issue.fields.created ?? null,
     }));
-  }
-
-  async assertProjectExists(
-    tenantId: string,
-    userId: string,
-    projectKey: string,
-  ): Promise<void> {
-    const projects = await this.listProjects(tenantId, userId);
-    const known = projects.some((p) => p.key === projectKey);
-    if (!known) {
-      throw new ProjectNotFoundError(projectKey);
-    }
   }
 }

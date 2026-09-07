@@ -19,7 +19,11 @@ export class AppExceptionFilter implements ExceptionFilter {
     const response = host.switchToHttp().getResponse<Response>();
 
     if (exception instanceof AppError) {
-      this.logger.warn(`AppError ${exception.code} (${exception.statusCode})`);
+      this.logger.warn(
+        `AppError ${exception.code} (${exception.statusCode})${
+          exception.detail ? `: ${exception.detail}` : ''
+        }`,
+      );
       response.status(exception.statusCode).json({
         error: exception.code,
         ...(exception.fields ? { fields: exception.fields } : {}),

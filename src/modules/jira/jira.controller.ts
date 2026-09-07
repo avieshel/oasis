@@ -61,7 +61,6 @@ export class JiraController {
   }
 
   @Delete('connect')
-  @HttpCode(HttpStatus.OK)
   @Throttle({ default: CONNECT_RATE_LIMIT })
   async disconnect(
     @CurrentUser() user: SessionUser,
@@ -72,7 +71,6 @@ export class JiraController {
   }
 
   @Get('status')
-  @HttpCode(HttpStatus.OK)
   async status(
     @CurrentUser() user: SessionUser,
     @CurrentTenantId() tenantId: string,
@@ -81,7 +79,6 @@ export class JiraController {
   }
 
   @Get('projects')
-  @HttpCode(HttpStatus.OK)
   @Throttle({ default: PROJECTS_RATE_LIMIT })
   async projects(
     @CurrentUser() user: SessionUser,
@@ -91,7 +88,6 @@ export class JiraController {
   }
 
   @Post('tickets')
-  @HttpCode(HttpStatus.CREATED)
   async createTicket(
     @CurrentUser() user: SessionUser,
     @CurrentTenantId() tenantId: string,
@@ -112,7 +108,6 @@ export class JiraController {
   }
 
   @Get('tickets/recent')
-  @HttpCode(HttpStatus.OK)
   async listRecentTickets(
     @CurrentUser() user: SessionUser,
     @CurrentTenantId() tenantId: string,
