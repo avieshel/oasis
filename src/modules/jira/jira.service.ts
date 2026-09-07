@@ -39,8 +39,6 @@ export interface JiraAuditContext {
   userAgent?: string | null;
 }
 
-const JIRA_PROJECTS_CACHE_TTL_MS = 60_000;
-
 interface ProjectsCacheEntry {
   expiresAt: number;
   projects: JiraProjectSummary[];
@@ -63,6 +61,10 @@ export class JiraService {
 
   private cacheTtlMs(): number {
     return this.config.get<number>('JIRA_CACHE_TTL_MS') ?? 60_000;
+  }
+
+  private projectsCacheTtlMs(): number {
+    return this.config.get<number>('JIRA_PROJECTS_CACHE_TTL_MS') ?? 60_000;
   }
 
   private async clientFor(
@@ -233,7 +235,7 @@ export class JiraService {
     const client = await this.clientFor(tenantId, principal);
     const projects = await client.listProjects();
     this.projectsCache.set(key, {
-      expiresAt: Date.now() + JIRA_PROJECTS_CACHE_TTL_MS,
+      expiresAt: Date.now() + this.projectsCacheTtlMs(),
       projects,
     });
     return projects;
