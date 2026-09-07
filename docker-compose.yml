@@ -18,7 +18,9 @@ services:
       COOKIE_SECURE: 'false'
       JIRA_CACHE_TTL_MS: '60000'
     volumes:
-      - app-data:/data
+      # Bind mount so the SQLite file lives on the host and tools like
+      # DataGrip can open it directly (named volumes are opaque to the host).
+      - ./data:/data
     restart: unless-stopped
     healthcheck:
       test:
@@ -45,10 +47,7 @@ services:
       DATABASE_URL: 'file:/data/app.db?busy_timeout=5000'
       APP_SECRET: 'identityhub-oasis-demo-secret-value!!'
     volumes:
-      - app-data:/data
+      - ./data:/data
     depends_on:
       app:
         condition: service_healthy
-
-volumes:
-  app-data:

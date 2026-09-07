@@ -5,7 +5,10 @@ client/dist/
 .env
 prisma/*.db
 prisma/*.db-journal
+prisma/*.db-wal
+prisma/*.db-shm
 coverage/
 local/*
 !local/jira-credentials.example.json
 !local/rest-api-credentials.example.json
+data/
