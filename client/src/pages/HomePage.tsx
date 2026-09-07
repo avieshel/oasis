@@ -63,6 +63,7 @@ export function HomePage(): JSX.Element {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [recent, setRecent] = useState<JiraRecentTicket[]>([]);
+  const [showCreate, setShowCreate] = useState(false);
 
   const [ticketTarget, setTicketTarget] = useState<string | null>(null);
   const [ticketProject, setTicketProject] = useState('');
@@ -250,6 +251,7 @@ export function HomePage(): JSX.Element {
       await createTicket(manualProject, title, description);
       setTitle('');
       setDescription('');
+      setShowCreate(false);
       setRecent(await listRecentTickets(manualProject));
     } catch (err: unknown) {
       setError(
@@ -327,97 +329,105 @@ export function HomePage(): JSX.Element {
           {summary !== null && summary.new > 0 ? ` · ${summary.new} new` : ''}
         </button>
       </div>
-
       {tab === 'recent' ? (
         <section>
-          {jiraConnected === true && (
+          <h2>Recent tickets</h2>
+          {jiraConnected === true ? (
             <>
-              <h2>Create ticket</h2>
-              <form onSubmit={(e) => void handleCreateManual(e)}>
-                <label>
-                  Project
-                  <select
-                    value={manualProject}
-                    onChange={(e) => setManualProject(e.target.value)}
-                  >
-                    <option value="">Select a project…</option>
-                    {projects?.map((p) => (
-                      <option key={p.key} value={p.key}>
-                        {p.key} — {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Title
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    required
-                  />
-                </label>
-                <label>
-                  Description
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    required
-                  />
-                </label>
-                <button type="submit" disabled={busy || manualProject === ''}>
-                  {busy ? 'Creating…' : 'Create ticket'}
+              <div className="inline-form">
+                <button
+                  type="button"
+                  disabled={busy || manualProject === ''}
+                  onClick={() => void handleLoadRecent(false)}
+                >
+                  Load recent
                 </button>
-              </form>
-              <h2>Recent tickets</h2>
-              <button
-                type="button"
-                disabled={busy || manualProject === ''}
-                onClick={() => void handleLoadRecent(false)}
-              >
-                Load recent
-              </button>{' '}
-              <button
-                type="button"
-                disabled={busy || manualProject === ''}
-                onClick={() => void handleLoadRecent(true)}
-              >
-                Refresh
-              </button>
+                <button
+                  type="button"
+                  disabled={busy || manualProject === ''}
+                  onClick={() => void handleLoadRecent(true)}
+                >
+                  Refresh
+                </button>
+              </div>
+              {recent.length === 0 ? (
+                <p className="muted">No tickets yet for this project.</p>
+              ) : (
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Key</th>
+                      <th>Title</th>
+                      <th>Created</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recent.map((ticket) => (
+                      <tr key={ticket.key}>
+                        <td>
+                          <a href={ticket.url} target="_blank" rel="noreferrer">
+                            {ticket.key}
+                          </a>
+                        </td>
+                        <td>{ticket.title}</td>
+                        <td>
+                          {ticket.createdAt === null
+                            ? '—'
+                            : new Date(ticket.createdAt).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <div className="inline-form">
+                <button
+                  type="button"
+                  onClick={() => setShowCreate((open) => !open)}
+                >
+                  {showCreate ? 'Hide create form' : 'Create ticket'}
+                </button>
+              </div>
+              {showCreate && (
+                <form onSubmit={(e) => void handleCreateManual(e)}>
+                  <label>
+                    Project
+                    <select
+                      value={manualProject}
+                      onChange={(e) => setManualProject(e.target.value)}
+                    >
+                      <option value="">Select a project…</option>
+                      {projects?.map((p) => (
+                        <option key={p.key} value={p.key}>
+                          {p.key} — {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Title
+                    <input
+                      type="text"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Description
+                    <textarea
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <button type="submit" disabled={busy || manualProject === ''}>
+                    {busy ? 'Creating…' : 'Create ticket'}
+                  </button>
+                </form>
+              )}
             </>
-          )}
-          {recent.length === 0 ? (
-            jiraConnected === true ? (
-              <p className="muted">No tickets yet for this project.</p>
-            ) : null
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Key</th>
-                  <th>Title</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.map((ticket) => (
-                  <tr key={ticket.key}>
-                    <td>
-                      <a href={ticket.url} target="_blank" rel="noreferrer">
-                        {ticket.key}
-                      </a>
-                    </td>
-                    <td>{ticket.title}</td>
-                    <td>
-                      {ticket.createdAt === null
-                        ? '—'
-                        : new Date(ticket.createdAt).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          ) : null}
         </section>
       ) : (
         <section>

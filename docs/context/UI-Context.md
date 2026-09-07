@@ -14,33 +14,35 @@ Agent guide for the React client (Vite SPA in `client/`).
     - `/signup` — `<AuthPage mode="signup" />`
     - `/` — `<HomePage />` (session-guarded, redirects to `/login`; nav links to
       `/settings` and `/admin` when enabled). Two tabs:
-      - **Recent tickets** (default): manual create-ticket form (project select
-        - title + description) and a table of `tickets_cache` rows returned via
-          Jira (Key linked to Jira, Title, Created) with Load recent / Refresh.
-      - **Items**: summary chips and the Oasis items table with
-        status/severity filters, "Generate random item" button, Close/Reopen,
-        and per-item "Create Jira ticket" with an inline project picker —
-        linked tickets render as a Jira link. The tab button shows a "N new"
-        indicator for `new` items, and creating a ticket switches to the
-        Recent tickets tab. When no Jira connection exists a banner links to
-        Settings, and create-ticket attempts auto-redirect to `/settings`.
-    - `/settings` — `<SettingsPage />` with **Jira connection** / **API keys**
-      tabs (`?tab=keys` deep-links the API-keys tab): connect/disconnect and
-      status for the user's Jira connection; mint key with optional
-      `allowed_project_keys` scoping, raw key shown **once**, per-key Jira
-      service-account tie + revoke. No ticket creation here — that lives on the
-      findings page.
-    - `/jira` → `<Navigate to="/settings" />`; `/api-keys` →
-      `<Navigate to="/settings?tab=keys" />` (kept as redirects for old links)
-    - `/admin` — `<AdminPage />` (tenant & user CRUD tables with inline
-      create/edit/delete, user password reset, tenant filter — see
-      `Admin-Context.md`; link shown only when the status endpoint reports
-      `enabled`)
+- **Recent tickets** (default, main view): table of `tickets_cache` rows
+  returned via Jira (Key linked to Jira, Title, Created) with Load
+  recent / Refresh, plus a **collapsible** create-ticket form (project
+  select + title + description) that hides itself after a successful
+  create. - **Items**: summary chips and the Oasis items table with
+  status/severity filters, "Generate random item" button, Close/Reopen,
+  and per-item "Create Jira ticket" with an inline project picker —
+  linked tickets render as a Jira link. The tab button shows a "N new"
+  indicator for `new` items, and creating a ticket switches to the
+  Recent tickets tab. When no Jira connection exists a banner links to
+  Settings, and create-ticket attempts auto-redirect to `/settings`.
+  - `/settings` — `<SettingsPage />` with **Jira connection** / **API keys**
+    tabs (`?tab=keys` deep-links the API-keys tab): connect/disconnect and
+    status for the user's Jira connection; mint key with optional
+    `allowed_project_keys` scoping, raw key shown **once**, per-key Jira
+    service-account tie + revoke. No ticket creation here — that lives on the
+    findings page.
+  - `/jira` → `<Navigate to="/settings" />`; `/api-keys` →
+    `<Navigate to="/settings?tab=keys" />` (kept as redirects for old links)
+  - `/admin` — `<AdminPage />` (tenant & user CRUD tables with inline
+    create/edit/delete, user password reset, tenant filter — see
+    `Admin-Context.md`; link shown only when the status endpoint reports
+    `enabled`)
   - `pages/AuthPage.tsx` — shared login/signup form (useCurrentUser redirect,
     error display, auto-login on signup)
-  - `pages/HomePage.tsx` — two-tab dashboard: Recent tickets (manual create
-    form + Jira tickets table) and Items (new-item indicator, summary chips,
-    filter selects, badge table, jira link column, triage actions)
+  - `pages/HomePage.tsx` — two-tab dashboard: Recent tickets (main view:
+    Jira tickets table + collapsible create form) and Items (new-item
+    indicator, summary chips, filter selects, badge table, jira link column,
+    triage actions)
   - `pages/SettingsPage.tsx` — guarded settings shell with Jira/API-keys tabs;
     tab sections are the page-chrome-free `JiraSettings` / `ApiKeysSettings`
     components (see `Jira-Client-Context.md` / `Rest-Api-Context.md`)
