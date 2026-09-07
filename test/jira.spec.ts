@@ -269,7 +269,23 @@ describe('jira :: projects, tickets, recent', () => {
     resetFetch();
   });
 
-  it('returns recent labelled tickets for a project', async () => {
+  it('serves cached recent tickets without hitting Jira', async () => {
+    mockFetch(() => {
+      throw new Error('must not call Jira when cache is fresh');
+    });
+
+    const res = await request(server)
+      .get('/api/app/jira/tickets/recent?project_key=MYPRJ')
+      .set('Cookie', authedJar)
+      .set('x-csrf-token', csrfTokenValue)
+      .expect(200);
+    const items = bodyOf<Array<{ key: string; title: string }>>(res);
+    expect(items[0].key).toBe('MYPRJ-1');
+    expect(items[0].title).toBe('Fix the bug');
+    resetFetch();
+  });
+
+  it('returns recent labelled tickets for a project when refreshed', async () => {
     mockFetch((url) => {
       const parsed = new URL(url);
       const jql = parsed.searchParams.get('jql');
@@ -295,13 +311,62 @@ describe('jira :: projects, tickets, recent', () => {
     });
 
     const res = await request(server)
-      .get('/api/app/jira/tickets/recent?project_key=MYPRJ')
+      .get('/api/app/jira/tickets/recent?project_key=MYPRJ&refresh=true')
       .set('Cookie', authedJar)
       .set('x-csrf-token', csrfTokenValue)
       .expect(200);
     const items = bodyOf<Array<{ key: string; title: string }>>(res);
     expect(items[0].key).toBe('MYPRJ-2');
     expect(items[0].title).toBe('Another one');
+    expect(items).not.toContainEqual(
+      expect.objectContaining({ key: 'MYPRJ-1' }),
+    );
+    resetFetch();
+  });
+
+  it('serves sub-tenants their own cached recent tickets only', async () => {
+    const { jar: csrfJar, token } = await fetchCsrf(server);
+    const otherEmail = `jira-other-${Date.now()}@example.com`;
+    await request(server)
+      .post('/api/app/signup')
+      .set('Cookie', csrfJar)
+      .set('x-csrf-token', token)
+      .send({ email: otherEmail, password: PASSWORD });
+    const otherLogin = await request(server)
+      .post('/api/app/auth/login')
+      .set('Cookie', csrfJar)
+      .set('x-csrf-token', token)
+      .send({ email: otherEmail, password: PASSWORD });
+    const otherJar = `${csrfJar}; ${cookieJar(otherLogin)}`;
+
+    mockFetch((url) => {
+      if (url === CONNECT_URL) {
+        return jsonResponse({
+          accountId: 'other123',
+          accountType: 'atlassian',
+          active: true,
+          displayName: 'Other',
+        });
+      }
+      const parsed = new URL(url);
+      if (parsed.pathname.endsWith('/rest/api/3/search/jql')) {
+        return jsonResponse({ issues: [] });
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+    await request(server)
+      .post('/api/app/jira/connect')
+      .set('Cookie', otherJar)
+      .set('x-csrf-token', token)
+      .send({ site_url: SITE_URL, email: otherEmail, api_token: 'tok' })
+      .expect(200);
+
+    const res = await request(server)
+      .get('/api/app/jira/tickets/recent?project_key=MYPRJ')
+      .set('Cookie', otherJar)
+      .set('x-csrf-token', token)
+      .expect(200);
+    expect(bodyOf<Array<unknown>>(res)).toEqual([]);
     resetFetch();
   });
 
@@ -339,7 +404,7 @@ describe('jira :: projects, tickets, recent', () => {
     expect(bodyOf<{ key: string }>(create).key).toBe('MYPRJ-3');
 
     const recent = await request(server)
-      .get('/api/app/jira/tickets/recent?project_key=MYPRJ')
+      .get('/api/app/jira/tickets/recent?project_key=MYPRJ&refresh=true')
       .set('Cookie', authedJar)
       .set('x-csrf-token', csrfTokenValue)
       .expect(502);

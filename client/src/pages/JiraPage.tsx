@@ -116,14 +116,14 @@ export function JiraPage(): JSX.Element {
     }
   };
 
-  const handleListRecent = async (): Promise<void> => {
+  const handleListRecent = async (refresh = false): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
       if (projectKey === '') {
         throw new Error('Select a project first');
       }
-      setRecent(await listRecentTickets(projectKey));
+      setRecent(await listRecentTickets(projectKey, refresh));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'unable to load tickets');
     } finally {
@@ -211,7 +211,6 @@ export function JiraPage(): JSX.Element {
               </select>
             </label>
           )}
-
           <form onSubmit={(e) => void handleCreate(e)}>
             <h2>Create ticket</h2>
             <label>
@@ -236,14 +235,20 @@ export function JiraPage(): JSX.Element {
               {busy ? 'Creating…' : 'Create ticket'}
             </button>
           </form>
-
           <h2>Recent tickets</h2>
           <button
             type="button"
             disabled={busy || projectKey === ''}
-            onClick={() => void handleListRecent()}
+            onClick={() => void handleListRecent(false)}
           >
             Load recent
+          </button>{' '}
+          <button
+            type="button"
+            disabled={busy || projectKey === ''}
+            onClick={() => void handleListRecent(true)}
+          >
+            Refresh
           </button>
           {recent.length > 0 && (
             <ul>

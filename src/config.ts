@@ -16,7 +16,7 @@ export const appConfigSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
-  JIRA_CACHE_TTL_MS: z.coerce.number().int().positive().default(30000),
+  JIRA_CACHE_TTL_MS: z.coerce.number().int().positive().default(60000),
   SESSION_IDLE_TTL_MS: z.coerce.number().int().positive().optional(),
   SESSION_ABSOLUTE_TTL_MS: z.coerce.number().int().positive().optional(),
   CORS_ORIGIN: z.string().optional(),

@@ -66,9 +66,11 @@ export async function createTicket(
 
 export async function listRecentTickets(
   projectKey: string,
+  refresh = false,
 ): Promise<JiraRecentTicket[]> {
   return apiRequest<JiraRecentTicket[]>(
     'GET',
-    `/jira/tickets/recent?project_key=${encodeURIComponent(projectKey)}`,
+    `/jira/tickets/recent?project_key=${encodeURIComponent(projectKey)}` +
+      (refresh ? '&refresh=true' : ''),
   );
 }

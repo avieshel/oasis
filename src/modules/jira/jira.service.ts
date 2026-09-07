@@ -1,16 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuditAction, AuditService } from '../../infra/audit';
 import { openSecret, sealSecret } from '../../infra/crypto';
 import { JiraNotConnectedError, ProjectNotFoundError } from '../../app/errors';
 import { buildAdfDocument } from './jira.adf';
 import { JiraClient, type JiraProjectSummary } from './jira.client';
+import { JiraRepository } from './jira.repository';
 import {
   JIRA_ISSUE_TYPE_TASK,
   JIRA_LABEL_FINDING,
   JIRA_RECENT_TICKETS_LIMIT,
 } from './jira.constants';
-import { JiraRepository } from './jira.repository';
 
 export interface JiraConnectionState {
   connected: boolean;
@@ -40,6 +40,8 @@ export interface JiraAuditContext {
 
 @Injectable()
 export class JiraService {
+  private readonly logger = new Logger(JiraService.name);
+
   constructor(
     private readonly jiraRepository: JiraRepository,
     private readonly config: ConfigService,
@@ -48,6 +50,10 @@ export class JiraService {
 
   private appSecret(): string {
     return this.config.getOrThrow<string>('APP_SECRET');
+  }
+
+  private cacheTtlMs(): number {
+    return this.config.get<number>('JIRA_CACHE_TTL_MS') ?? 60_000;
   }
 
   private async clientFor(
@@ -179,6 +185,17 @@ export class JiraService {
       labels: [JIRA_LABEL_FINDING],
     });
 
+    const now = new Date();
+    await this.jiraRepository.upsertRecentTicket(tenantId, userId, {
+      jiraSite: client.origin,
+      projectKey: input.projectKey,
+      issueKey: created.key,
+      title: input.title,
+      url: `${client.origin}/browse/${created.key}`,
+      jiraCreatedAt: now,
+      reconciledAt: now,
+    });
+
     await this.audit.write({
       tenantId,
       userId,
@@ -198,6 +215,44 @@ export class JiraService {
     tenantId: string,
     userId: string,
     projectKey: string,
+    forcedRefresh = false,
+  ): Promise<JiraRecentTicket[]> {
+    const cached = await this.jiraRepository.findRecentTickets(
+      tenantId,
+      userId,
+      projectKey,
+      JIRA_RECENT_TICKETS_LIMIT,
+    );
+    const reconciledAt = await this.jiraRepository.lastReconciledAt(
+      tenantId,
+      userId,
+      projectKey,
+    );
+
+    if (forcedRefresh) {
+      return this.refreshFromJira(tenantId, userId, projectKey);
+    }
+
+    if (cached.length === 0) {
+      return this.refreshFromJira(tenantId, userId, projectKey);
+    }
+
+    const isFresh =
+      reconciledAt !== null &&
+      Date.now() - reconciledAt.getTime() < this.cacheTtlMs();
+    if (!isFresh) {
+      void this.refreshFromJira(tenantId, userId, projectKey).catch((error) =>
+        this.logger.warn('background recent-tickets refresh failed', error),
+      );
+    }
+
+    return cached.map(toRecentTicket);
+  }
+
+  private async refreshFromJira(
+    tenantId: string,
+    userId: string,
+    projectKey: string,
   ): Promise<JiraRecentTicket[]> {
     const client = await this.clientFor(tenantId, userId);
     const jql =
@@ -205,12 +260,50 @@ export class JiraService {
       `ORDER BY created DESC`;
 
     const issues = await client.searchByJql(jql, JIRA_RECENT_TICKETS_LIMIT);
+    const now = new Date();
+    await this.jiraRepository.syncRecentTickets(tenantId, userId, {
+      jiraSite: client.origin,
+      projectKey,
+      reconciledAt: now,
+      issues: issues.map((issue) => ({
+        key: issue.key,
+        title: issue.fields.summary ?? '',
+        createdAt: jiraDateToDate(issue.fields.created) ?? now,
+      })),
+    });
 
     return issues.map((issue) => ({
       key: issue.key,
       title: issue.fields.summary ?? '',
       url: `${client.origin}/browse/${issue.key}`,
-      createdAt: issue.fields.created ?? null,
+      createdAt: normalizeJiraDate(issue.fields.created),
     }));
   }
+}
+
+function jiraDateToDate(value: string | undefined): Date | null {
+  if (value === undefined) {
+    return null;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function normalizeJiraDate(value: string | undefined): string | null {
+  if (value === undefined) {
+    return null;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function toRecentTicket(
+  ticket: Awaited<ReturnType<JiraRepository['findRecentTickets']>>[number],
+): JiraRecentTicket {
+  return {
+    key: ticket.issue_key,
+    title: ticket.title,
+    url: ticket.url,
+    createdAt: ticket.jira_created_at.toISOString(),
+  };
 }

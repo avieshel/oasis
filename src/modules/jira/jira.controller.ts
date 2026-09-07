@@ -13,7 +13,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import {
   jiraConnectSchema,
-  projectKeySchema,
+  jiraRecentTicketsQuerySchema,
   ticketCreateSchema,
 } from '../../app/validation';
 import { getRateLimitConfig } from '../../config/rate-limits';
@@ -113,7 +113,12 @@ export class JiraController {
     @CurrentTenantId() tenantId: string,
     @Req() req: RequestWithSession,
   ) {
-    const projectKey = projectKeySchema.parse(req.query.project_key);
-    return this.jiraService.listRecentTickets(tenantId, user.id, projectKey);
+    const query = jiraRecentTicketsQuerySchema.parse(req.query);
+    return this.jiraService.listRecentTickets(
+      tenantId,
+      user.id,
+      query.project_key,
+      query.refresh,
+    );
   }
 }

@@ -37,6 +37,18 @@ export const ticketCreateSchema = z.object({
 
 export type TicketCreate = z.infer<typeof ticketCreateSchema>;
 
+export const jiraRecentTicketsQuerySchema = z.object({
+  project_key: projectKeySchema,
+  refresh: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((value) => value === 'true'),
+});
+
+export type JiraRecentTicketsQuery = z.infer<
+  typeof jiraRecentTicketsQuerySchema
+>;
+
 export const jiraConnectSchema = z.object({
   site_url: z.string().url().max(MAX_JIRA_SITE_URL_LENGTH),
   email: z.string().email().max(255),
