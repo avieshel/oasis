@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import {
   adminStatus,
@@ -39,9 +39,106 @@ interface UserEdit {
   password: string;
 }
 
+type Tab = 'tenants' | 'users';
+
+type SortDirection = 'asc' | 'desc';
+
+interface SortState<K extends string> {
+  key: K;
+  direction: SortDirection;
+}
+
+function useSort<K extends string>(
+  initialKey: K,
+): [SortState<K> | null, (key: K) => void] {
+  const [sort, setSort] = useState<SortState<K> | null>({
+    key: initialKey,
+    direction: 'asc',
+  });
+  const toggle = (key: K): void => {
+    setSort((prev) =>
+      prev !== null && prev.key === key
+        ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: 'asc' },
+    );
+  };
+  return [sort, toggle];
+}
+
+function compareValues(
+  a: string | number | null | undefined,
+  b: string | number | null | undefined,
+): number {
+  if (a === b) {
+    return 0;
+  }
+  if (a === null || a === undefined) {
+    return 1;
+  }
+  if (b === null || b === undefined) {
+    return -1;
+  }
+  if (typeof a === 'number' && typeof b === 'number') {
+    return a - b;
+  }
+  const as = String(a);
+  const bs = String(b);
+  return as < bs ? -1 : as > bs ? 1 : 0;
+}
+
+interface SortableHeaderProps {
+  label: string;
+  active: boolean;
+  direction: SortDirection;
+  onClick: () => void;
+}
+
+function SortableHeader({
+  label,
+  active,
+  direction,
+  onClick,
+}: SortableHeaderProps): JSX.Element {
+  return (
+    <th>
+      <button
+        type="button"
+        className="sort-header"
+        onClick={onClick}
+        aria-label={`Sort by ${label}`}
+      >
+        {label}
+        {active ? (direction === 'asc' ? ' ↑' : ' ↓') : ''}
+      </button>
+    </th>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      className={`tab-button${active ? ' active' : ''}`}
+      onClick={onClick}
+      aria-pressed={active}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function AdminPage(): JSX.Element {
   const auth = useCurrentUser();
   const [enabled, setEnabled] = useState(false);
+  const [tab, setTab] = useState<Tab>('tenants');
   const [tenants, setTenants] = useState<AdminTenant[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [tenantFilter, setTenantFilter] = useState('');
@@ -56,6 +153,9 @@ export function AdminPage(): JSX.Element {
   const [userEdit, setUserEdit] = useState<UserEdit | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const [tenantSort, toggleTenantSort] = useSort<keyof AdminTenant>('name');
+  const [userSort, toggleUserSort] = useSort<keyof AdminUser>('email');
 
   useEffect(() => {
     adminStatus()
@@ -241,6 +341,36 @@ export function AdminPage(): JSX.Element {
     }
   };
 
+  const sortedTenants = [...tenants].sort((a, b) => {
+    const key = tenantSort?.key ?? 'name';
+    const factor = tenantSort?.direction === 'desc' ? -1 : 1;
+    return factor * compareValues(a[key], b[key]);
+  });
+
+  const sortedUsers = [...users].sort((a, b) => {
+    const key = userSort?.key ?? 'email';
+    const factor = userSort?.direction === 'desc' ? -1 : 1;
+    return factor * compareValues(a[key], b[key]);
+  });
+
+  const tenantHeader = (key: keyof AdminTenant, label: string) => (
+    <SortableHeader
+      label={label}
+      active={tenantSort?.key === key}
+      direction={tenantSort?.direction ?? 'asc'}
+      onClick={() => toggleTenantSort(key)}
+    />
+  );
+
+  const userHeader = (key: keyof AdminUser, label: string) => (
+    <SortableHeader
+      label={label}
+      active={userSort?.key === key}
+      direction={userSort?.direction ?? 'asc'}
+      onClick={() => toggleUserSort(key)}
+    />
+  );
+
   return (
     <main className="page page-wide">
       <Link to="/">← Back</Link>
@@ -251,168 +381,158 @@ export function AdminPage(): JSX.Element {
       </p>
       {error !== null && <p className="err">{error}</p>}
 
-      <section>
-        <h2>Tenants</h2>
-        <form onSubmit={(e) => void handleCreateTenant(e)}>
-          <label>
-            Slug
-            <input
-              type="text"
-              value={tenantForm.slug}
-              onChange={(e) =>
-                setTenantForm((prev) => ({ ...prev, slug: e.target.value }))
-              }
-              placeholder="acme"
-              pattern="[a-z0-9]+(-[a-z0-9]+)*"
-              required
-            />
-          </label>
-          <label>
-            Name
-            <input
-              type="text"
-              value={tenantForm.name}
-              onChange={(e) =>
-                setTenantForm((prev) => ({ ...prev, name: e.target.value }))
-              }
-              placeholder="Acme Corp"
-              required
-            />
-          </label>
-          <button type="submit" disabled={busy}>
-            {busy ? 'Working…' : 'Create tenant'}
-          </button>
-        </form>
-        {tenants.length === 0 ? (
-          <p>No tenants yet.</p>
-        ) : (
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Slug</th>
-                <th>Name</th>
-                <th>Users</th>
-                <th>Created</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {tenants.map((tenant) =>
-                tenantEdit !== null && tenantEdit.id === tenant.id ? (
-                  <tr key={tenant.id}>
-                    <td colSpan={5}>
-                      <form
-                        onSubmit={(e) => void handleUpdateTenant(e)}
-                        className="inline-form"
-                      >
-                        <input
-                          type="text"
-                          value={tenantEdit.slug}
-                          onChange={(e) =>
-                            setTenantEdit((prev) =>
-                              prev === null
-                                ? prev
-                                : { ...prev, slug: e.target.value },
-                            )
-                          }
-                          pattern="[a-z0-9]+(-[a-z0-9]+)*"
-                          required
-                        />
-                        <input
-                          type="text"
-                          value={tenantEdit.name}
-                          onChange={(e) =>
-                            setTenantEdit((prev) =>
-                              prev === null
-                                ? prev
-                                : { ...prev, name: e.target.value },
-                            )
-                          }
-                          required
-                        />
-                        <button type="submit" disabled={busy}>
-                          Save
-                        </button>
+      <div className="tabs">
+        <TabButton active={tab === 'tenants'} onClick={() => setTab('tenants')}>
+          Tenants
+        </TabButton>
+        <TabButton active={tab === 'users'} onClick={() => setTab('users')}>
+          Users
+        </TabButton>
+      </div>
+
+      {tab === 'tenants' ? (
+        <section>
+          <h2>Tenants</h2>
+          <form onSubmit={(e) => void handleCreateTenant(e)}>
+            <label>
+              Slug
+              <input
+                type="text"
+                value={tenantForm.slug}
+                onChange={(e) =>
+                  setTenantForm((prev) => ({ ...prev, slug: e.target.value }))
+                }
+                placeholder="acme"
+                pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                required
+              />
+            </label>
+            <label>
+              Name
+              <input
+                type="text"
+                value={tenantForm.name}
+                onChange={(e) =>
+                  setTenantForm((prev) => ({ ...prev, name: e.target.value }))
+                }
+                placeholder="Acme Corp"
+                required
+              />
+            </label>
+            <button type="submit" disabled={busy}>
+              {busy ? 'Working…' : 'Create tenant'}
+            </button>
+          </form>
+          {sortedTenants.length === 0 ? (
+            <p>No tenants yet.</p>
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  {tenantHeader('slug', 'Slug')}
+                  {tenantHeader('name', 'Name')}
+                  {tenantHeader('userCount', 'Users')}
+                  {tenantHeader('createdAt', 'Created')}
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedTenants.map((tenant) =>
+                  tenantEdit !== null && tenantEdit.id === tenant.id ? (
+                    <tr key={tenant.id}>
+                      <td colSpan={5}>
+                        <form
+                          onSubmit={(e) => void handleUpdateTenant(e)}
+                          className="inline-form"
+                        >
+                          <input
+                            type="text"
+                            value={tenantEdit.slug}
+                            onChange={(e) =>
+                              setTenantEdit((prev) =>
+                                prev === null
+                                  ? prev
+                                  : { ...prev, slug: e.target.value },
+                              )
+                            }
+                            pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                            required
+                          />
+                          <input
+                            type="text"
+                            value={tenantEdit.name}
+                            onChange={(e) =>
+                              setTenantEdit((prev) =>
+                                prev === null
+                                  ? prev
+                                  : { ...prev, name: e.target.value },
+                              )
+                            }
+                            required
+                          />
+                          <button type="submit" disabled={busy}>
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTenantEdit(null);
+                              setError(null);
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={tenant.id}>
+                      <td>{tenant.slug}</td>
+                      <td>{tenant.name}</td>
+                      <td>{tenant.userCount}</td>
+                      <td>{new Date(tenant.createdAt).toLocaleString()}</td>
+                      <td>
                         <button
                           type="button"
                           onClick={() => {
-                            setTenantEdit(null);
+                            setTenantEdit({
+                              id: tenant.id,
+                              slug: tenant.slug,
+                              name: tenant.name,
+                            });
                             setError(null);
                           }}
                         >
-                          Cancel
+                          Edit
+                        </button>{' '}
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteTenant(tenant.id)}
+                        >
+                          Delete
                         </button>
-                      </form>
-                    </td>
-                  </tr>
-                ) : (
-                  <tr key={tenant.id}>
-                    <td>{tenant.slug}</td>
-                    <td>{tenant.name}</td>
-                    <td>{tenant.userCount}</td>
-                    <td>{new Date(tenant.createdAt).toLocaleString()}</td>
-                    <td>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTenantEdit({
-                            id: tenant.id,
-                            slug: tenant.slug,
-                            name: tenant.name,
-                          });
-                          setError(null);
-                        }}
-                      >
-                        Edit
-                      </button>{' '}
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteTenant(tenant.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ),
-              )}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section>
-        <h2>Users</h2>
-        <label>
-          Filter by tenant
-          <select
-            value={tenantFilter}
-            onChange={(e) => {
-              const value = e.target.value;
-              setTenantFilter(value);
-              void reloadUsers(value);
-            }}
-          >
-            <option value="">All tenants</option>
-            {tenants.map((tenant) => (
-              <option key={tenant.id} value={tenant.id}>
-                {tenant.slug}
-              </option>
-            ))}
-          </select>
-        </label>
-        <form onSubmit={(e) => void handleCreateUser(e)}>
+                      </td>
+                    </tr>
+                  ),
+                )}
+              </tbody>
+            </table>
+          )}
+        </section>
+      ) : (
+        <section>
+          <h2>Users</h2>
           <label>
-            Tenant
+            Filter by tenant
             <select
-              value={userForm.tenant_id}
-              onChange={(e) =>
-                setUserForm((prev) => ({
-                  ...prev,
-                  tenant_id: e.target.value,
-                }))
-              }
-              required
+              value={tenantFilter}
+              onChange={(e) => {
+                const value = e.target.value;
+                setTenantFilter(value);
+                void reloadUsers(value);
+              }}
             >
+              <option value="">All tenants</option>
               {tenants.map((tenant) => (
                 <option key={tenant.id} value={tenant.id}>
                   {tenant.slug}
@@ -420,152 +540,173 @@ export function AdminPage(): JSX.Element {
               ))}
             </select>
           </label>
-          <label>
-            Email
-            <input
-              type="email"
-              value={userForm.email}
-              onChange={(e) =>
-                setUserForm((prev) => ({ ...prev, email: e.target.value }))
-              }
-              required
-            />
-          </label>
-          <label>
-            Name
-            <input
-              type="text"
-              value={userForm.name}
-              onChange={(e) =>
-                setUserForm((prev) => ({ ...prev, name: e.target.value }))
-              }
-            />
-          </label>
-          <label>
-            Password (min 8)
-            <input
-              type="password"
-              value={userForm.password}
-              onChange={(e) =>
-                setUserForm((prev) => ({ ...prev, password: e.target.value }))
-              }
-              autoComplete="new-password"
-              required
-            />
-          </label>
-          <button type="submit" disabled={busy}>
-            {busy ? 'Working…' : 'Create user'}
-          </button>
-        </form>
-        {users.length === 0 ? (
-          <p>No users.</p>
-        ) : (
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Email</th>
-                <th>Name</th>
-                <th>Tenant</th>
-                <th>Created</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) =>
-                userEdit !== null && userEdit.id === user.id ? (
-                  <tr key={user.id}>
-                    <td colSpan={5}>
-                      <form
-                        onSubmit={(e) => void handleUpdateUser(e)}
-                        className="inline-form"
-                      >
-                        <input
-                          type="email"
-                          value={userEdit.email}
-                          onChange={(e) =>
-                            setUserEdit((prev) =>
-                              prev === null
-                                ? prev
-                                : { ...prev, email: e.target.value },
-                            )
-                          }
-                          required
-                        />
-                        <input
-                          type="text"
-                          value={userEdit.name}
-                          placeholder="name"
-                          onChange={(e) =>
-                            setUserEdit((prev) =>
-                              prev === null
-                                ? prev
-                                : { ...prev, name: e.target.value },
-                            )
-                          }
-                        />
-                        <input
-                          type="password"
-                          value={userEdit.password}
-                          placeholder="new password (blank = keep)"
-                          autoComplete="new-password"
-                          onChange={(e) =>
-                            setUserEdit((prev) =>
-                              prev === null
-                                ? prev
-                                : { ...prev, password: e.target.value },
-                            )
-                          }
-                        />
-                        <button type="submit" disabled={busy}>
-                          Save
-                        </button>
+          <form onSubmit={(e) => void handleCreateUser(e)}>
+            <label>
+              Tenant
+              <select
+                value={userForm.tenant_id}
+                onChange={(e) =>
+                  setUserForm((prev) => ({
+                    ...prev,
+                    tenant_id: e.target.value,
+                  }))
+                }
+                required
+              >
+                {tenants.map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>
+                    {tenant.slug}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Email
+              <input
+                type="email"
+                value={userForm.email}
+                onChange={(e) =>
+                  setUserForm((prev) => ({ ...prev, email: e.target.value }))
+                }
+                required
+              />
+            </label>
+            <label>
+              Name
+              <input
+                type="text"
+                value={userForm.name}
+                onChange={(e) =>
+                  setUserForm((prev) => ({ ...prev, name: e.target.value }))
+                }
+              />
+            </label>
+            <label>
+              Password (min 8)
+              <input
+                type="password"
+                value={userForm.password}
+                onChange={(e) =>
+                  setUserForm((prev) => ({ ...prev, password: e.target.value }))
+                }
+                autoComplete="new-password"
+                required
+              />
+            </label>
+            <button type="submit" disabled={busy}>
+              {busy ? 'Working…' : 'Create user'}
+            </button>
+          </form>
+          {sortedUsers.length === 0 ? (
+            <p>No users.</p>
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  {userHeader('email', 'Email')}
+                  {userHeader('name', 'Name')}
+                  {userHeader('tenantSlug', 'Tenant')}
+                  {userHeader('createdAt', 'Created')}
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedUsers.map((user) =>
+                  userEdit !== null && userEdit.id === user.id ? (
+                    <tr key={user.id}>
+                      <td colSpan={5}>
+                        <form
+                          onSubmit={(e) => void handleUpdateUser(e)}
+                          className="inline-form"
+                        >
+                          <input
+                            type="email"
+                            value={userEdit.email}
+                            onChange={(e) =>
+                              setUserEdit((prev) =>
+                                prev === null
+                                  ? prev
+                                  : { ...prev, email: e.target.value },
+                              )
+                            }
+                            required
+                          />
+                          <input
+                            type="text"
+                            value={userEdit.name}
+                            placeholder="name"
+                            onChange={(e) =>
+                              setUserEdit((prev) =>
+                                prev === null
+                                  ? prev
+                                  : { ...prev, name: e.target.value },
+                              )
+                            }
+                          />
+                          <input
+                            type="password"
+                            value={userEdit.password}
+                            placeholder="new password (blank = keep)"
+                            autoComplete="new-password"
+                            onChange={(e) =>
+                              setUserEdit((prev) =>
+                                prev === null
+                                  ? prev
+                                  : { ...prev, password: e.target.value },
+                              )
+                            }
+                          />
+                          <button type="submit" disabled={busy}>
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUserEdit(null);
+                              setError(null);
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={user.id}>
+                      <td>{user.email}</td>
+                      <td>{user.name ?? '—'}</td>
+                      <td>{user.tenantSlug ?? user.tenantId}</td>
+                      <td>{new Date(user.createdAt).toLocaleString()}</td>
+                      <td>
                         <button
                           type="button"
                           onClick={() => {
-                            setUserEdit(null);
+                            setUserEdit({
+                              id: user.id,
+                              email: user.email,
+                              name: user.name ?? '',
+                              password: '',
+                            });
                             setError(null);
                           }}
                         >
-                          Cancel
+                          Edit
+                        </button>{' '}
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteUser(user.id)}
+                        >
+                          Delete
                         </button>
-                      </form>
-                    </td>
-                  </tr>
-                ) : (
-                  <tr key={user.id}>
-                    <td>{user.email}</td>
-                    <td>{user.name ?? '—'}</td>
-                    <td>{user.tenantSlug ?? user.tenantId}</td>
-                    <td>{new Date(user.createdAt).toLocaleString()}</td>
-                    <td>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUserEdit({
-                            id: user.id,
-                            email: user.email,
-                            name: user.name ?? '',
-                            password: '',
-                          });
-                          setError(null);
-                        }}
-                      >
-                        Edit
-                      </button>{' '}
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteUser(user.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ),
-              )}
-            </tbody>
-          </table>
-        )}
-      </section>
+                      </td>
+                    </tr>
+                  ),
+                )}
+              </tbody>
+            </table>
+          )}
+        </section>
+      )}
     </main>
   );
 }
