@@ -25,6 +25,8 @@ import {
 } from '../api/items';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 
+type MainTab = 'recent' | 'items';
+
 const SEVERITY_FILTERS = [
   { value: '', label: 'All severities' },
   { value: 'info', label: 'Info' },
@@ -47,6 +49,7 @@ export function HomePage(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [adminEnabled, setAdminEnabled] = useState<boolean | null>(null);
+  const [tab, setTab] = useState<MainTab>('recent');
 
   const [items, setItems] = useState<OasisItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -56,19 +59,25 @@ export function HomePage(): JSX.Element {
   const [reloadKey, setReloadKey] = useState(0);
 
   const [projects, setProjects] = useState<JiraProjectSummary[] | null>(null);
-  const [projectsFailed, setProjectsFailed] = useState(false);
-  const [ticketTarget, setTicketTarget] = useState<string | null>(null);
-  const [ticketProject, setTicketProject] = useState('');
-  const [jiraConnected, setJiraConnected] = useState<boolean | null>(null);
   const [manualProject, setManualProject] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [recent, setRecent] = useState<JiraRecentTicket[]>([]);
 
+  const [ticketTarget, setTicketTarget] = useState<string | null>(null);
+  const [ticketProject, setTicketProject] = useState('');
+  const [jiraConnected, setJiraConnected] = useState<boolean | null>(null);
+
   useEffect(() => {
     jiraStatus()
       .then((state) => setJiraConnected(state.connected))
       .catch(() => setJiraConnected(false));
+  }, []);
+
+  useEffect(() => {
+    adminStatus()
+      .then((status) => setAdminEnabled(status.enabled))
+      .catch(() => setAdminEnabled(false));
   }, []);
 
   useEffect(() => {
@@ -78,7 +87,6 @@ export function HomePage(): JSX.Element {
     listProjects()
       .then((loaded) => {
         setProjects(loaded);
-        setProjectsFailed(false);
         setManualProject(loaded[0]?.key ?? '');
       })
       .catch((err: unknown) => {
@@ -89,18 +97,11 @@ export function HomePage(): JSX.Element {
           setJiraConnected(false);
           return;
         }
-        setProjectsFailed(true);
         setError(
           err instanceof Error ? err.message : 'unable to load projects',
         );
       });
   }, [jiraConnected]);
-
-  useEffect(() => {
-    adminStatus()
-      .then((status) => setAdminEnabled(status.enabled))
-      .catch(() => setAdminEnabled(false));
-  }, []);
 
   useEffect(() => {
     itemsSummary()
@@ -121,6 +122,17 @@ export function HomePage(): JSX.Element {
         setError(err instanceof Error ? err.message : 'unable to load items'),
       );
   }, [statusFilter, severityFilter, reloadKey]);
+
+  useEffect(() => {
+    if (jiraConnected !== true || manualProject === '') {
+      return;
+    }
+    listRecentTickets(manualProject)
+      .then(setRecent)
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : 'unable to load tickets'),
+      );
+  }, [jiraConnected, manualProject]);
 
   if (auth.status === 'anonymous') {
     return <Navigate to="/login" replace />;
@@ -196,7 +208,6 @@ export function HomePage(): JSX.Element {
     try {
       const loaded = await listProjects();
       setProjects(loaded);
-      setProjectsFailed(false);
       setTicketProject(loaded[0]?.key ?? '');
       setTicketTarget(id);
     } catch (err: unknown) {
@@ -204,7 +215,6 @@ export function HomePage(): JSX.Element {
         void navigate('/settings');
         return;
       }
-      setProjectsFailed(true);
       setError(
         err instanceof ApiError ? err.message : 'unable to load projects',
       );
@@ -218,6 +228,9 @@ export function HomePage(): JSX.Element {
       await createItemTicket(id, ticketProject);
       setTicketTarget(null);
       refresh();
+      setManualProject(ticketProject);
+      setRecent(await listRecentTickets(ticketProject));
+      setTab('recent');
     } catch (err: unknown) {
       setError(
         err instanceof ApiError ? err.message : 'unable to create ticket',
@@ -262,13 +275,11 @@ export function HomePage(): JSX.Element {
     }
   };
 
-  const chipClass = 'chip';
-
   return (
     <main className="page page-wide">
       <div className="row-between">
         <div>
-          <h1>IdentityHub — Oasis findings</h1>
+          <h1>IdentityHub — Oasis</h1>
           <p>
             Signed in as <strong>{auth.user.email}</strong>.
           </p>
@@ -297,255 +308,292 @@ export function HomePage(): JSX.Element {
         </p>
       )}
 
-      {jiraConnected === true && (
+      {error !== null && <p className="err">{error}</p>}
+
+      <div className="tabs">
+        <button
+          type="button"
+          className={`tab-button${tab === 'recent' ? ' active' : ''}`}
+          onClick={() => setTab('recent')}
+        >
+          Recent tickets
+        </button>
+        <button
+          type="button"
+          className={`tab-button${tab === 'items' ? ' active' : ''}`}
+          onClick={() => setTab('items')}
+        >
+          Items
+          {summary !== null && summary.new > 0 ? ` · ${summary.new} new` : ''}
+        </button>
+      </div>
+
+      {tab === 'recent' ? (
         <section>
-          <h2>Create ticket</h2>
-          <form onSubmit={(e) => void handleCreateManual(e)}>
-            <label>
-              Project
-              <select
-                value={manualProject}
-                onChange={(e) => setManualProject(e.target.value)}
+          {jiraConnected === true && (
+            <>
+              <h2>Create ticket</h2>
+              <form onSubmit={(e) => void handleCreateManual(e)}>
+                <label>
+                  Project
+                  <select
+                    value={manualProject}
+                    onChange={(e) => setManualProject(e.target.value)}
+                  >
+                    <option value="">Select a project…</option>
+                    {projects?.map((p) => (
+                      <option key={p.key} value={p.key}>
+                        {p.key} — {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Title
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    required
+                  />
+                </label>
+                <label>
+                  Description
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    required
+                  />
+                </label>
+                <button type="submit" disabled={busy || manualProject === ''}>
+                  {busy ? 'Creating…' : 'Create ticket'}
+                </button>
+              </form>
+              <h2>Recent tickets</h2>
+              <button
+                type="button"
+                disabled={busy || manualProject === ''}
+                onClick={() => void handleLoadRecent(false)}
               >
-                <option value="">Select a project…</option>
-                {projects?.map((p) => (
-                  <option key={p.key} value={p.key}>
-                    {p.key} — {p.name}
+                Load recent
+              </button>{' '}
+              <button
+                type="button"
+                disabled={busy || manualProject === ''}
+                onClick={() => void handleLoadRecent(true)}
+              >
+                Refresh
+              </button>
+            </>
+          )}
+          {recent.length === 0 ? (
+            jiraConnected === true ? (
+              <p className="muted">No tickets yet for this project.</p>
+            ) : null
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Title</th>
+                  <th>Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.map((ticket) => (
+                  <tr key={ticket.key}>
+                    <td>
+                      <a href={ticket.url} target="_blank" rel="noreferrer">
+                        {ticket.key}
+                      </a>
+                    </td>
+                    <td>{ticket.title}</td>
+                    <td>
+                      {ticket.createdAt === null
+                        ? '—'
+                        : new Date(ticket.createdAt).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      ) : (
+        <section>
+          <div className="row-between">
+            <h2>Items</h2>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void handleGenerate()}
+            >
+              {busy ? '…' : 'Generate random item'}
+            </button>
+          </div>
+
+          <div className="inline-form">
+            <span className="chip">New {summary?.new ?? 0}</span>
+            <span className="chip">Closed {summary?.closed ?? 0}</span>
+            <span className="chip">
+              Jira tickets {summary?.jiraTicket ?? 0}
+            </span>
+            <span className="chip">Total {summary?.total ?? 0}</span>
+          </div>
+
+          <div className="inline-form">
+            <label>
+              Status
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                {STATUS_FILTERS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
             </label>
             <label>
-              Title
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-              />
+              Severity
+              <select
+                value={severityFilter}
+                onChange={(e) => setSeverityFilter(e.target.value)}
+              >
+                {SEVERITY_FILTERS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
-            <label>
-              Description
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                required
-              />
-            </label>
-            {error !== null && <p className="err">{error}</p>}
-            <button type="submit" disabled={busy || manualProject === ''}>
-              {busy ? 'Creating…' : 'Create ticket'}
-            </button>
-          </form>
-        </section>
-      )}
+          </div>
 
-      <section>
-        <div className="row-between">
-          <h2>Items</h2>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void handleGenerate()}
-          >
-            {busy ? '…' : 'Generate random item'}
-          </button>
-        </div>
-
-        <div className="inline-form">
-          <span className={chipClass}>New {summary?.new ?? 0}</span>
-          <span className={chipClass}>Closed {summary?.closed ?? 0}</span>
-          <span className={chipClass}>
-            Jira tickets {summary?.jiraTicket ?? 0}
-          </span>
-          <span className={chipClass}>Total {summary?.total ?? 0}</span>
-        </div>
-
-        <div className="inline-form">
-          <label>
-            Status
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              {STATUS_FILTERS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Severity
-            <select
-              value={severityFilter}
-              onChange={(e) => setSeverityFilter(e.target.value)}
-            >
-              {SEVERITY_FILTERS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {projectsFailed && <Link to="/settings">Open Settings…</Link>}
-        </div>
-
-        {error !== null && <p className="err">{error}</p>}
-
-        {items.length === 0 ? (
-          <p>No items yet.</p>
-        ) : (
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Type</th>
-                <th>Severity</th>
-                <th>Status</th>
-                <th>Ticket</th>
-                <th>Created</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id}>
-                  <td>
-                    <strong>{item.title}</strong>
-                    {item.description !== null && (
-                      <div className="muted">{item.description}</div>
-                    )}
-                    <div className="muted">{item.scanner}</div>
-                  </td>
-                  <td>
-                    <code>{item.itemType}</code>
-                  </td>
-                  <td>
-                    <span className={`badge badge-sev-${item.severity}`}>
-                      {item.severity}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`badge badge-status-${item.status}`}>
-                      {item.status}
-                    </span>
-                  </td>
-                  <td>
-                    {item.jiraUrl !== null ? (
-                      <a href={item.jiraUrl} target="_blank" rel="noreferrer">
-                        {item.jiraKey}
-                      </a>
-                    ) : (
-                      <span className="muted">—</span>
-                    )}
-                  </td>
-                  <td>{new Date(item.createdAt).toLocaleString()}</td>
-                  <td>
-                    {item.status === 'new' && (
-                      <span className="inline-form">
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void handleClose(item.id)}
-                        >
-                          Close
-                        </button>
-                        {ticketTarget === item.id ? (
-                          <span className="inline-form">
-                            <select
-                              value={ticketProject}
-                              onChange={(e) => setTicketProject(e.target.value)}
-                            >
-                              {projects?.map((p) => (
-                                <option key={p.key} value={p.key}>
-                                  {p.key}
-                                </option>
-                              ))}
-                            </select>
-                            <button
-                              type="button"
-                              disabled={busy || ticketProject === ''}
-                              onClick={() => void handleTicketSubmit(item.id)}
-                            >
-                              Create
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setTicketTarget(null)}
-                            >
-                              Cancel
-                            </button>
-                          </span>
-                        ) : (
+          {items.length === 0 ? (
+            <p>No items yet.</p>
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Type</th>
+                  <th>Severity</th>
+                  <th>Status</th>
+                  <th>Ticket</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <td>
+                      <strong>{item.title}</strong>
+                      {item.description !== null && (
+                        <div className="muted">{item.description}</div>
+                      )}
+                      <div className="muted">{item.scanner}</div>
+                    </td>
+                    <td>
+                      <code>{item.itemType}</code>
+                    </td>
+                    <td>
+                      <span className={`badge badge-sev-${item.severity}`}>
+                        {item.severity}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge badge-status-${item.status}`}>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td>
+                      {item.jiraUrl !== null ? (
+                        <a href={item.jiraUrl} target="_blank" rel="noreferrer">
+                          {item.jiraKey}
+                        </a>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                    <td>{new Date(item.createdAt).toLocaleString()}</td>
+                    <td>
+                      {item.status === 'new' && (
+                        <span className="inline-form">
                           <button
                             type="button"
                             disabled={busy}
-                            onClick={() => void handleTicketClick(item.id)}
+                            onClick={() => void handleClose(item.id)}
                           >
-                            Create Jira ticket
+                            Close
                           </button>
-                        )}
-                      </span>
-                    )}
-                    {item.status === 'closed' && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void handleReopen(item.id)}
-                      >
-                        Reopen
-                      </button>
-                    )}
-                    {item.status === 'jira-ticket' && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void handleReopen(item.id)}
-                      >
-                        Reopen
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <p className="muted">
-          Showing {items.length} of {total} items.
-        </p>
-      </section>
-
-      {jiraConnected === true && (
-        <section>
-          <h2>Recent tickets</h2>
-          <button
-            type="button"
-            disabled={busy || manualProject === ''}
-            onClick={() => void handleLoadRecent(false)}
-          >
-            Load recent
-          </button>{' '}
-          <button
-            type="button"
-            disabled={busy || manualProject === ''}
-            onClick={() => void handleLoadRecent(true)}
-          >
-            Refresh
-          </button>
-          {recent.length > 0 && (
-            <ul>
-              {recent.map((t) => (
-                <li key={t.key}>
-                  <a href={t.url} target="_blank" rel="noreferrer">
-                    {t.key}
-                  </a>{' '}
-                  — {t.title}
-                </li>
-              ))}
-            </ul>
+                          {ticketTarget === item.id ? (
+                            <span className="inline-form">
+                              <select
+                                value={ticketProject}
+                                onChange={(e) =>
+                                  setTicketProject(e.target.value)
+                                }
+                              >
+                                {projects?.map((p) => (
+                                  <option key={p.key} value={p.key}>
+                                    {p.key}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                disabled={busy || ticketProject === ''}
+                                onClick={() => void handleTicketSubmit(item.id)}
+                              >
+                                Create
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setTicketTarget(null)}
+                              >
+                                Cancel
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void handleTicketClick(item.id)}
+                            >
+                              Create Jira ticket
+                            </button>
+                          )}
+                        </span>
+                      )}
+                      {item.status === 'closed' && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void handleReopen(item.id)}
+                        >
+                          Reopen
+                        </button>
+                      )}
+                      {item.status === 'jira-ticket' && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void handleReopen(item.id)}
+                        >
+                          Reopen
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
+          <p className="muted">
+            Showing {items.length} of {total} items.
+          </p>
         </section>
       )}
     </main>
