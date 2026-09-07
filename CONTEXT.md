@@ -731,8 +731,12 @@ slice (`17e95b2`, after `3ee218a`/`ecdc32d`):
    behind `ApiKeyGuard`, reusing the same services/cache as the UI. Management
    UI at route `/api-keys`. 10-test `test/api-keys.spec.ts`; full suite 46.
    Jira service/repo generalized to `JiraPrincipal` (user | api_key).
-8. ⏳ **Next slice**: apply the `ticketCreateUi` throttle to the UI
-   create/recent routes (config exists; `ticketCreateApi` is already live for
-   REST), and surface per-key Jira status/`last_used_at` in the management UI.
-9. ⏳ README + design-decisions doc; reviewer distribution via Docker image
-   (tracked as GitHub issue #11).
+8. ✅ **Admin management** (reviewer affordance, gated by `ALLOW_ADMIN` env
+   flag, default on): `/admin` page + `/api/app/admin/*` REST for CRUD on
+   tenants & users, inline table UI, user password reset (kills sessions),
+   cascade deletes, `audit_log` entries, disabled-mode 403. `users.name`
+   column added. 16-test `test/admin.spec.ts`; full suite 62.
+9. ⏳ **Next slice**: expose per-key Jira status/`last_used_at` in the API-keys
+   UI, apply `ticketCreateUi` throttle to the UI create/recent routes.
+10. ⏳ README + design-decisions doc; reviewer distribution via Docker image
+    (tracked as GitHub issue #11).

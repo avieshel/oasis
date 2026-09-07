@@ -19,6 +19,10 @@ Agent guide for the React client (Vite SPA in `client/`).
     - `/api-keys` — `<ApiKeysPage />` (mint key with optional
       `allowed_project_keys` scoping, shows the raw key **once**, per-key
       Jira service-account tie form + disconnect, revoke)
+    - `/admin` — `<AdminPage />` (tenant & user CRUD tables with inline
+      create/edit/delete, user password reset, tenant filter — see
+      `Admin-Context.md`; link shown only when the status endpoint reports
+      `enabled`)
   - `pages/AuthPage.tsx` — shared login/signup form (useCurrentUser redirect,
     error display, auto-login on signup)
   - `pages/HomePage.tsx` — displays email, logout button, nav links

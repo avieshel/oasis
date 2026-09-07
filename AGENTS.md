@@ -15,6 +15,7 @@ day-to-day changes.
 | Jira Cloud client code                | `docs/context/Jira-Client-Context.md`      |
 | React client (pages, api, components) | `docs/context/UI-Context.md`               |
 | Automated tests                       | `docs/context/Test-Context.md`             |
+| `/admin` tenant & user management     | `docs/context/Admin-Context.md`            |
 | Full design context                   | `CONTEXT.md`                               |
 
 ## Conventions

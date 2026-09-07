@@ -24,6 +24,11 @@ Agent guide for automated tests (vitest + supertest + shell harness).
   revoke, per-key Jira tie + status, REST create, REST recent cache-first (zero
   Jira calls on hit), 403 scoped key, wildcard key OK, 401 invalid, 401 revoked,
   cross-tenant delete 404.
+- `test/admin.spec.ts` (16 specs): session-required, status counts, tenant
+  create/list/filter, duplicate slug 409, invalid slug 400, tenant update + 404,
+  user create/list/filter by tenant, duplicate email 400, missing tenant 404,
+  managed user login, password reset kills sessions, user update, user delete
+  cascade, tenant delete cascade, disabled-mode 403.
 - All specs boot their own `AppModule` (with `cookieParser` + `setGlobalPrefix`)
   so each describe has an isolated server/DB.
 - Run: `npm test`. Full gate: `npm run check` (lint + typecheck + test). CI runs
