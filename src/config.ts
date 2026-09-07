@@ -72,6 +72,8 @@ export const appConfigSchema = z.object({
     .positive()
     .optional(),
   RATE_LIMIT_JIRA_PROJECTS_LIMIT: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_ITEM_CREATE_TTL_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_ITEM_CREATE_LIMIT: z.coerce.number().int().positive().optional(),
 });
 
 export type AppConfig = z.infer<typeof appConfigSchema>;
