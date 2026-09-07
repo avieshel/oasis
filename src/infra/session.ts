@@ -8,14 +8,19 @@ export interface SessionUser {
   id: string;
   email: string;
   tenantId: string;
+  tenantName: string;
 }
 
-export function toSessionUser(user: {
-  id: string;
-  email: string;
-  tenant_id: string;
-}): SessionUser {
-  return { id: user.id, email: user.email, tenantId: user.tenant_id };
+export function toSessionUser(
+  user: { id: string; email: string; tenant_id: string },
+  tenantName?: string,
+): SessionUser {
+  return {
+    id: user.id,
+    email: user.email,
+    tenantId: user.tenant_id,
+    tenantName: tenantName ?? '',
+  };
 }
 
 export function sessionCookieOptions(secure: boolean): CookieOptions {
@@ -99,6 +104,10 @@ export class SessionManager {
       return null;
     }
 
+    const tenant = await this.prisma.tenants.findUnique({
+      where: { id: user.tenant_id },
+    });
+
     await this.prisma.sessions.update({
       where: { id: session.id },
       data: {
@@ -107,7 +116,7 @@ export class SessionManager {
       },
     });
 
-    return { id: session.id, user: toSessionUser(user) };
+    return { id: session.id, user: toSessionUser(user, tenant?.name) };
   }
 
   async peek(

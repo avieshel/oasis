@@ -4,6 +4,7 @@ export interface AppUser {
   id: string;
   email: string;
   tenantId: string;
+  tenantName: string;
 }
 
 export interface TenantSummary {

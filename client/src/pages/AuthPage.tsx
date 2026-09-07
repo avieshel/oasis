@@ -63,6 +63,10 @@ export function AuthPage({ mode }: AuthPageProps): JSX.Element {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
+    if (isSignup && !selectedTenantId && tenantMode === 'join') {
+      setError('Please select a tenant');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -90,7 +94,10 @@ export function AuthPage({ mode }: AuthPageProps): JSX.Element {
 
   return (
     <main className="page">
-      <h1>{isSignup ? 'Create account' : 'Log in'}</h1>
+      <h1>IdentityHub</h1>
+      <h2 style={{ marginBottom: '24px' }}>
+        {isSignup ? 'Create account' : 'Log in'}
+      </h2>
       <form onSubmit={(e) => void handleSubmit(e)}>
         <label>
           Email
@@ -116,39 +123,34 @@ export function AuthPage({ mode }: AuthPageProps): JSX.Element {
         {isSignup && (
           <fieldset className="tenant-picker">
             <legend>Tenant</legend>
-            <label className="radio">
-              <input
-                type="radio"
-                name="tenant-mode"
-                value="join"
-                checked={tenantMode === 'join'}
-                onChange={() => setTenantMode('join')}
+            <div className="tabs">
+              <button
+                type="button"
+                className={`tab-button ${tenantMode === 'join' ? 'active' : ''}`}
+                onClick={() => setTenantMode('join')}
                 disabled={tenants.length === 0}
-              />
-              Join existing
-            </label>
-            <label className="radio">
-              <input
-                type="radio"
-                name="tenant-mode"
-                value="create"
-                checked={tenantMode === 'create'}
-                onChange={() => setTenantMode('create')}
-              />
-              Create new
-            </label>
+              >
+                Select existing
+              </button>
+              <button
+                type="button"
+                className={`tab-button ${tenantMode === 'create' ? 'active' : ''}`}
+                onClick={() => setTenantMode('create')}
+              >
+                Create new
+              </button>
+            </div>
             {tenantMode === 'join' && (
               <label>
-                Tenant
+                Select a tenant
                 <select
                   value={selectedTenantId}
                   onChange={(e) => setSelectedTenantId(e.target.value)}
                   required
-                  disabled={tenants.length === 0}
                 >
-                  {tenants.length === 0 && (
-                    <option value="">No tenants yet</option>
-                  )}
+                  <option value="" disabled>
+                    -- Select a tenant --
+                  </option>
                   {tenants.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name} ({t.slug})

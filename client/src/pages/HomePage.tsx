@@ -288,7 +288,8 @@ export function HomePage(): JSX.Element {
         <div>
           <h1>IdentityHub — Oasis</h1>
           <p>
-            Signed in as <strong>{auth.user.email}</strong>.
+            Signed in as <strong>{auth.user.email}</strong>
+            {auth.user.tenantName ? ` · ${auth.user.tenantName}` : ''}.
           </p>
         </div>
         <div>
@@ -339,7 +340,7 @@ export function HomePage(): JSX.Element {
           <h2>Recent tickets</h2>
           {jiraConnected === true ? (
             <>
-              <div className="inline-form">
+              <div className="inline-form" style={{ alignItems: 'flex-end' }}>
                 <label>
                   Project
                   <select

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SessionManager, toSessionUser } from '../../infra/session';
 import { AuditAction, AuditService } from '../../infra/audit';
+import { PrismaService } from '../../infra/db';
 import { UserRepository } from '../users/user.repository';
 import { verifyPassword } from '../../infra/crypto';
 import { InvalidCredentialsError, UnauthorizedError } from '../../app/errors';
@@ -22,6 +23,7 @@ export class AuthService {
     private readonly users: UserRepository,
     private readonly sessions: SessionManager,
     private readonly audit: AuditService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async login(email: string, password: string, ctx: LoginContext) {
@@ -33,6 +35,10 @@ export class AuthService {
       this.logger.log(`login failed for email=${email}`);
       throw new InvalidCredentialsError();
     }
+
+    const tenant = await this.prisma.tenants.findUnique({
+      where: { id: user.tenant_id },
+    });
 
     const token = await this.sessions.create({
       userId: user.id,
@@ -52,7 +58,7 @@ export class AuthService {
 
     return {
       sessionToken: token,
-      user: toSessionUser(user),
+      user: toSessionUser(user, tenant?.name),
     };
   }
 
