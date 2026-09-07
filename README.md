@@ -26,27 +26,36 @@ or `/admin`.
 
 ## Inspecting the database
 
-The database is a SQLite file at `/data/app.db` inside the container,
-backed by a named volume (`oasis_app-data` by default). The app keeps a
-write lock while running, so for read-only inspection grab a copy first
-or use a tool that supports WAL/online backup.
+The database is a SQLite file bind-mounted to `./data/app.db` on the host,
+so any local SQLite client can open it directly while the app is running
+(the app enables WAL mode so reads don't block writes).
+
+### DataGrip (or any JDBC client)
+
+1. **File → New → Data Source → SQLite.**
+2. Set **File** to `./data/app.db` (relative to the repo root) or its
+   absolute path.
+3. The JDBC URL is shown as:
+   ```
+   jdbc:sqlite:<absolute-path-to-repo>/data/app.db
+   ```
+4. Test connection → OK. You can browse every table and run ad-hoc
+   `SELECT`s; writes from the app will appear live.
+
+### Other tools
+
+- **DB Browser for SQLite** / **TablePlus** / **VS Code SQLite
+  extension**: open `./data/app.db`.
+- **Command line** (the image has no `sqlite3` binary, but you can shell
+  into the app and query via Prisma):
+  ```sh
+  docker compose exec app node -e \
+    "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.users.findMany({select:{email:true,name:true}}).then(r=>{console.log(JSON.stringify(r,null,2));p.\$disconnect()})"
+  ```
+
+To reset:
 
 ```sh
-# One-off shell into the running app container
-docker compose exec app sh
-# sqlite3 isn't installed in the image, so query through node + Prisma:
-node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.users.findMany({select:{email:true,name:true,tenant_id:true}}).then(r=>{console.log(JSON.stringify(r,null,2));p.\$disconnect()})"
-```
-
-For a graphical viewer, copy the DB out and open it locally:
-
-```sh
-docker compose cp app:/data/app.db ./app.db
-```
-
-Then open `app.db` in [DB Browser for SQLite](https://sqlitebrowser.org/),
-TablePlus, or the VS Code SQLite extension. To go back to a fresh state:
-
-```sh
-docker compose down -v
+docker compose down   # keep the ./data directory
+rm -rf ./data         # wipe and start fresh on next `docker compose up`
 ```
