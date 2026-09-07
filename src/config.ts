@@ -74,6 +74,10 @@ export const appConfigSchema = z.object({
   RATE_LIMIT_JIRA_PROJECTS_LIMIT: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_ITEM_CREATE_TTL_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_ITEM_CREATE_LIMIT: z.coerce.number().int().positive().optional(),
+  PURGE_SESSIONS_ON_STARTUP: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
 });
 
 export type AppConfig = z.infer<typeof appConfigSchema>;
@@ -102,5 +106,6 @@ export function loadConfig(): AppConfig {
     SESSION_IDLE_TTL_MS: process.env.SESSION_IDLE_TTL_MS,
     SESSION_ABSOLUTE_TTL_MS: process.env.SESSION_ABSOLUTE_TTL_MS,
     CORS_ORIGIN: process.env.CORS_ORIGIN,
+    PURGE_SESSIONS_ON_STARTUP: process.env.PURGE_SESSIONS_ON_STARTUP,
   });
 }

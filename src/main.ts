@@ -10,6 +10,7 @@ import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { setupSwagger } from './swagger';
 import { loadConfig } from './config';
+import { PrismaService } from './infra/db';
 
 const CLIENT_DIST = path.join(__dirname, '..', 'client', 'dist');
 const CLIENT_INDEX = path.join(CLIENT_DIST, 'index.html');
@@ -84,6 +85,13 @@ async function bootstrap(): Promise<void> {
       if (path.extname(url) !== '') return next();
       res.sendFile(CLIENT_INDEX);
     });
+  }
+
+  if (config.PURGE_SESSIONS_ON_STARTUP) {
+    const prisma: PrismaService = app.get(PrismaService);
+    const { count } = await prisma.sessions.deleteMany({});
+    const logger = app.get<Logger>(Logger);
+    logger.log({ purged: count }, 'invalidated sessions on startup');
   }
 
   await app.listen(config.PORT);
