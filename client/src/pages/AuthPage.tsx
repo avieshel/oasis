@@ -1,13 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { ApiError } from '../api/client';
-import { login, signup } from '../api/auth';
+import {
+  listTenants,
+  login,
+  signup,
+  type TenantSummary,
+  type SignupTenantSelection,
+} from '../api/auth';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 
 interface AuthPageProps {
   mode: 'login' | 'signup';
 }
+
+type TenantMode = 'join' | 'create';
 
 export function AuthPage({ mode }: AuthPageProps): JSX.Element {
   const isSignup = mode === 'signup';
@@ -17,6 +25,34 @@ export function AuthPage({ mode }: AuthPageProps): JSX.Element {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const [tenants, setTenants] = useState<TenantSummary[]>([]);
+  const [tenantMode, setTenantMode] = useState<TenantMode>('join');
+  const [selectedTenantId, setSelectedTenantId] = useState('');
+  const [newSlug, setNewSlug] = useState('');
+  const [newName, setNewName] = useState('');
+
+  useEffect(() => {
+    if (!isSignup) return;
+    let cancelled = false;
+    void listTenants()
+      .then((list) => {
+        if (cancelled) return;
+        setTenants(list);
+        if (list.length > 0) {
+          setSelectedTenantId(list[0].id);
+        } else {
+          setTenantMode('create');
+        }
+      })
+      .catch(() => {
+        // Tenant list is optional — fall back to create mode.
+        if (!cancelled) setTenantMode('create');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isSignup]);
 
   if (auth.status === 'authenticated') {
     return <Navigate to="/" replace />;
@@ -31,7 +67,11 @@ export function AuthPage({ mode }: AuthPageProps): JSX.Element {
     setError(null);
     try {
       if (isSignup) {
-        await signup(email, password);
+        const selection: SignupTenantSelection =
+          tenantMode === 'join'
+            ? { tenant_id: selectedTenantId }
+            : { new_tenant: { slug: newSlug, name: newName } };
+        await signup(email, password, selection);
       }
       await login(email, password);
       void navigate('/', { replace: true });
@@ -73,6 +113,77 @@ export function AuthPage({ mode }: AuthPageProps): JSX.Element {
             required
           />
         </label>
+        {isSignup && (
+          <fieldset className="tenant-picker">
+            <legend>Tenant</legend>
+            <label className="radio">
+              <input
+                type="radio"
+                name="tenant-mode"
+                value="join"
+                checked={tenantMode === 'join'}
+                onChange={() => setTenantMode('join')}
+                disabled={tenants.length === 0}
+              />
+              Join existing
+            </label>
+            <label className="radio">
+              <input
+                type="radio"
+                name="tenant-mode"
+                value="create"
+                checked={tenantMode === 'create'}
+                onChange={() => setTenantMode('create')}
+              />
+              Create new
+            </label>
+            {tenantMode === 'join' && (
+              <label>
+                Tenant
+                <select
+                  value={selectedTenantId}
+                  onChange={(e) => setSelectedTenantId(e.target.value)}
+                  required
+                  disabled={tenants.length === 0}
+                >
+                  {tenants.length === 0 && (
+                    <option value="">No tenants yet</option>
+                  )}
+                  {tenants.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.slug})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {tenantMode === 'create' && (
+              <>
+                <label>
+                  Tenant slug
+                  <input
+                    type="text"
+                    value={newSlug}
+                    onChange={(e) => setNewSlug(e.target.value)}
+                    pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                    placeholder="acme-corp"
+                    required
+                  />
+                </label>
+                <label>
+                  Tenant name
+                  <input
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Acme Corp"
+                    required
+                  />
+                </label>
+              </>
+            )}
+          </fieldset>
+        )}
         {error !== null && <p className="err">{error}</p>}
         <button type="submit" disabled={busy}>
           {busy

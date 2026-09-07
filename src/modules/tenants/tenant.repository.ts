@@ -19,6 +19,19 @@ export class TenantRepository {
     });
   }
 
+  async createWithSlug(slug: string, name: string) {
+    return this.prisma.tenants.create({
+      data: { slug, name },
+    });
+  }
+
+  async listAll() {
+    return this.prisma.tenants.findMany({
+      select: { id: true, slug: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async findById(id: string) {
     return this.prisma.tenants.findUnique({ where: { id } });
   }

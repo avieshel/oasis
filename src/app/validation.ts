@@ -90,10 +90,22 @@ export const userUpdateSchema = z.object({
 
 export type UserUpdateInput = z.infer<typeof userUpdateSchema>;
 
-export const signupSchema = z.object({
-  email: z.string().email().max(255),
-  password: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH),
-});
+export const signupSchema = z
+  .object({
+    email: z.string().email().max(255),
+    password: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH),
+    tenant_id: z.string().min(1).max(MAX_ENTITY_ID_LENGTH).optional(),
+    new_tenant: z
+      .object({
+        slug: tenantSlugSchema,
+        name: tenantNameSchema,
+      })
+      .optional(),
+  })
+  .refine((data) => !(data.tenant_id && data.new_tenant), {
+    message: 'Provide either tenant_id or new_tenant, not both',
+    path: ['tenant_id'],
+  });
 
 export type SignupInput = z.infer<typeof signupSchema>;
 

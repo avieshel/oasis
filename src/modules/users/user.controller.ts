@@ -1,4 +1,11 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { UserService } from './user.service';
@@ -15,6 +22,11 @@ export class UserController {
     private readonly config: ConfigService,
   ) {}
 
+  @Get('tenants')
+  async listTenants() {
+    return { tenants: await this.userService.listTenants() };
+  }
+
   @Post('signup')
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ default: SIGNUP_RATE_LIMIT })
@@ -29,6 +41,7 @@ export class UserController {
     const { user, tenant } = await this.userService.signup(
       body.email,
       body.password,
+      { tenant_id: body.tenant_id, new_tenant: body.new_tenant },
     );
     return {
       user: { id: user.id, email: user.email, tenantId: tenant.id },

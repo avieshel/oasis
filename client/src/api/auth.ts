@@ -6,6 +6,12 @@ export interface AppUser {
   tenantId: string;
 }
 
+export interface TenantSummary {
+  id: string;
+  slug: string;
+  name: string;
+}
+
 interface UserResponse {
   user: AppUser;
 }
@@ -23,13 +29,25 @@ export async function login(email: string, password: string): Promise<AppUser> {
   return res.user;
 }
 
+export async function listTenants(): Promise<TenantSummary[]> {
+  const res = await apiRequest<{ tenants: TenantSummary[] }>('GET', '/tenants');
+  return res.tenants;
+}
+
+export interface SignupTenantSelection {
+  tenant_id?: string;
+  new_tenant?: { slug: string; name: string };
+}
+
 export async function signup(
   email: string,
   password: string,
+  selection?: SignupTenantSelection,
 ): Promise<AppUser> {
   const res = await apiRequest<UserResponse>('POST', '/signup', {
     email,
     password,
+    ...selection,
   });
   return res.user;
 }
