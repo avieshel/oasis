@@ -1,22 +1,47 @@
 import { Injectable } from '@nestjs/common';
-import { hashPassword } from '../../infra/crypto';
+import { ConfigService } from '@nestjs/config';
 import {
   EmailTakenError,
+  JiraNotConnectedError,
   NotFoundError,
   SlugTakenError,
 } from '../../app/errors';
+import { hashPassword, openSecret } from '../../infra/crypto';
+import { JiraService, type JiraAuditContext } from '../jira/jira.service';
 import { AdminRepository } from './admin.repository';
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly repository: AdminRepository) {}
+  constructor(
+    private readonly repository: AdminRepository,
+    private readonly jiraService: JiraService,
+    private readonly config: ConfigService,
+  ) {}
 
   async status() {
-    const [tenantCount, userCount] = await Promise.all([
+    const [
+      tenantCount,
+      userCount,
+      connectionCount,
+      apiKeyCount,
+      itemCount,
+      ticketCount,
+    ] = await Promise.all([
       this.repository.countTenants(),
       this.repository.countUsers(),
+      this.repository.countConnections(),
+      this.repository.countApiKeys(),
+      this.repository.countItems(),
+      this.repository.countTickets(),
     ]);
-    return { tenantCount, userCount };
+    return {
+      tenantCount,
+      userCount,
+      connectionCount,
+      apiKeyCount,
+      itemCount,
+      ticketCount,
+    };
   }
 
   async listTenants() {
@@ -113,5 +138,105 @@ export class AdminService {
       throw new NotFoundError('User');
     }
     await this.repository.deleteUserCascaded(id);
+  }
+
+  async listConnections(filter?: { userId?: string; tenantId?: string }) {
+    return this.repository.listConnections(filter);
+  }
+
+  async createConnection(
+    userId: string,
+    input: { siteUrl: string; email: string; apiToken: string },
+    ctx: JiraAuditContext,
+  ) {
+    const user = await this.repository.findUserById(userId);
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+    return this.jiraService.connect(
+      user.tenant_id,
+      { kind: 'user', userId },
+      input,
+      ctx,
+    );
+  }
+
+  async updateConnection(
+    id: string,
+    input: { siteUrl: string; email: string; apiToken: string },
+    ctx: JiraAuditContext,
+  ) {
+    const connection = await this.repository.findConnectionById(id);
+    if (!connection) {
+      throw new NotFoundError('Connection');
+    }
+    if (connection.user_id === null) {
+      throw new NotFoundError('Connection');
+    }
+    const user = await this.repository.findUserById(connection.user_id);
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+    return this.jiraService.connect(
+      user.tenant_id,
+      { kind: 'user', userId: connection.user_id },
+      input,
+      ctx,
+    );
+  }
+
+  async deleteConnection(id: string): Promise<boolean> {
+    return this.repository.deleteConnectionCascaded(id);
+  }
+
+  async connectionDetail(id: string, revealToken: boolean) {
+    const connection = await this.repository.findConnectionById(id);
+    if (!connection) {
+      throw new NotFoundError('Connection');
+    }
+    const base = {
+      id: connection.id,
+      userId: connection.user_id,
+      apiKeyId: connection.api_key_id,
+      mode: connection.mode,
+      siteUrl: connection.site_url,
+      email: connection.email,
+      hasApiToken: connection.api_token_cipher !== null,
+      hasOauthTokens: connection.access_token_cipher !== null,
+      createdAt: connection.created_at,
+    };
+    if (!revealToken) {
+      return { ...base, tokenRevealed: false };
+    }
+    if (!connection.api_token_cipher || !connection.api_token_nonce) {
+      throw new JiraNotConnectedError();
+    }
+    const apiToken = openSecret(
+      connection.api_token_cipher,
+      connection.api_token_nonce,
+      this.config.getOrThrow<string>('APP_SECRET'),
+    );
+    return { ...base, tokenRevealed: true, apiToken };
+  }
+
+  async testConnection(id: string, ctx: JiraAuditContext) {
+    const connection = await this.repository.findConnectionById(id);
+    if (!connection) {
+      throw new NotFoundError('Connection');
+    }
+    const principal =
+      connection.user_id !== null
+        ? { kind: 'user' as const, userId: connection.user_id }
+        : connection.api_key_id !== null
+          ? { kind: 'api_key' as const, apiKeyId: connection.api_key_id }
+          : null;
+    if (principal === null) {
+      throw new NotFoundError('Connection');
+    }
+    return this.jiraService.testConnection(
+      connection.tenant_id,
+      principal,
+      ctx,
+    );
   }
 }

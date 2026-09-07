@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
+import { sealSecret } from '../src/infra/crypto';
 import { PrismaService } from '../src/infra/db';
 
 const PASSWORD = 'password123';
@@ -497,6 +498,205 @@ describe('admin :: tenant & user management (ALLOW_ADMIN=true)', () => {
     expect(
       bodyOf<TenantListBody>(listRes).tenants.some((t) => t.slug === slug),
     ).toBe(false);
+  });
+});
+
+describe('admin :: jira connections & dashboard counts (ALLOW_ADMIN=true)', () => {
+  const SITE_URL = 'https://acme.atlassian.net';
+  const CONN_EMAIL = 'bot@acme.example.com';
+  const API_TOKEN = 'test-api-token-1234';
+  const SEED_SITE = `${SITE_URL.replace(/\/$/, '')}`;
+
+  let server: Server;
+  let prisma: PrismaService;
+  let claims: AdminClaims;
+  let userId: string;
+  let adminTenantId: string;
+  const connSlug = `acmeconn${Date.now()}`;
+  const adminEmail = `adminconn${Date.now()}@example.com`;
+  const userEmail = `connuser${Date.now()}@example.com`;
+  const appSecret = process.env.APP_SECRET as string;
+
+  beforeAll(async () => {
+    process.env.ALLOW_ADMIN = 'true';
+    server = await boot();
+    prisma = new PrismaService();
+    await prisma.$connect();
+    claims = await adminAuth(server, adminEmail);
+    adminTenantId = await createTenant(server, claims, connSlug, 'Acme Conn');
+    const res = await request(server)
+      .post('/api/app/admin/users')
+      .set('Cookie', claims.jar)
+      .set('x-csrf-token', claims.token)
+      .send({
+        tenant_id: adminTenantId,
+        email: userEmail,
+        name: 'Connection Owner',
+        password: PASSWORD,
+      })
+      .expect(201);
+    userId = bodyOf<UserBody>(res).user.id;
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+    server.close();
+  });
+
+  it('reports dashboard aggregate counts', async () => {
+    const res = await request(server)
+      .get('/api/app/admin/status')
+      .set('Cookie', claims.jar)
+      .expect(200);
+    const body = bodyOf<{
+      enabled: boolean;
+      tenantCount: number;
+      userCount: number;
+      connectionCount: number;
+      apiKeyCount: number;
+      itemCount: number;
+      ticketCount: number;
+    }>(res);
+    expect(body.enabled).toBe(true);
+    expect(body.tenantCount).toBeGreaterThan(0);
+    expect(body.userCount).toBeGreaterThan(0);
+    expect(body.connectionCount).toBeGreaterThanOrEqual(0);
+    expect(body.apiKeyCount).toBeGreaterThanOrEqual(0);
+    expect(body.itemCount).toBeGreaterThanOrEqual(0);
+    expect(body.ticketCount).toBeGreaterThanOrEqual(0);
+  });
+
+  it('requires a session for connection routes', async () => {
+    await request(server).get('/api/app/admin/connections').expect(401);
+    await request(server).get('/api/app/admin/connections/abc').expect(401);
+  });
+
+  it('404s creating a connection for an unknown user', async () => {
+    await request(server)
+      .post('/api/app/admin/connections')
+      .set('Cookie', claims.jar)
+      .set('x-csrf-token', claims.token)
+      .send({
+        user_id: 'nope',
+        site_url: SITE_URL,
+        email: CONN_EMAIL,
+        api_token: API_TOKEN,
+      })
+      .expect(404);
+  });
+
+  it('rejects an invalid connection body with 400', async () => {
+    await request(server)
+      .post('/api/app/admin/connections')
+      .set('Cookie', claims.jar)
+      .set('x-csrf-token', claims.token)
+      .send({ user_id: userId, site_url: 'not-a-url' })
+      .expect(400);
+  });
+
+  it('lists, masks, reveals, tests, and deletes a connection', async () => {
+    const sealed = sealSecret(API_TOKEN, appSecret);
+    const seeded = await prisma.jira_connections.create({
+      data: {
+        tenant_id: adminTenantId,
+        user_id: userId,
+        mode: 'api_token',
+        site_url: SEED_SITE,
+        email: CONN_EMAIL,
+        api_token_cipher: sealed.cipher,
+        api_token_nonce: sealed.nonce,
+      },
+    });
+
+    const listRes = await request(server)
+      .get('/api/app/admin/connections')
+      .set('Cookie', claims.jar)
+      .expect(200);
+    const list = bodyOf<{
+      connections: Array<{
+        id: string;
+        userEmail: string | null;
+        tenantSlug: string | undefined;
+        mode: string;
+        siteUrl: string | null;
+        email: string | null;
+        hasApiToken: boolean;
+        lastTestedAt: string | null;
+      }>;
+    }>(listRes).connections;
+    const row = list.find((c) => c.id === seeded.id);
+    expect(row).toBeDefined();
+    expect(row?.userEmail).toBe(userEmail);
+    expect(row?.tenantSlug).toBe(connSlug);
+    expect(row?.mode).toBe('api_token');
+    expect(row?.siteUrl).toBe(SEED_SITE);
+    expect(row?.email).toBe(CONN_EMAIL);
+    expect(row?.hasApiToken).toBe(true);
+    expect(row?.lastTestedAt).toBeNull();
+
+    const filtered = await request(server)
+      .get(`/api/app/admin/connections?tenant_id=${adminTenantId}`)
+      .set('Cookie', claims.jar)
+      .expect(200);
+    expect(
+      bodyOf<{ connections: Array<{ id: string }> }>(filtered).connections.some(
+        (c) => c.id === seeded.id,
+      ),
+    ).toBe(true);
+
+    const detailRes = await request(server)
+      .get(`/api/app/admin/connections/${seeded.id}`)
+      .set('Cookie', claims.jar)
+      .expect(200);
+    const detail = bodyOf<{
+      connection: { tokenRevealed: boolean; apiToken?: string };
+    }>(detailRes).connection;
+    expect(detail.tokenRevealed).toBe(false);
+    expect(detail.apiToken).toBeUndefined();
+
+    const revealRes = await request(server)
+      .get(`/api/app/admin/connections/${seeded.id}?reveal_token=true`)
+      .set('Cookie', claims.jar)
+      .expect(200);
+    const revealed = bodyOf<{
+      connection: { tokenRevealed: boolean; apiToken: string };
+    }>(revealRes).connection;
+    expect(revealed.tokenRevealed).toBe(true);
+    expect(revealed.apiToken).toBe(API_TOKEN);
+
+    await request(server)
+      .delete(`/api/app/admin/connections/${seeded.id}`)
+      .set('Cookie', claims.jar)
+      .set('x-csrf-token', claims.token)
+      .expect(200);
+
+    const afterDelete = await request(server)
+      .get('/api/app/admin/connections')
+      .set('Cookie', claims.jar)
+      .expect(200);
+    expect(
+      bodyOf<{ connections: Array<{ id: string }> }>(
+        afterDelete,
+      ).connections.some((c) => c.id === seeded.id),
+    ).toBe(false);
+  });
+
+  it('404s on unknown connection detail, test, and delete', async () => {
+    await request(server)
+      .get('/api/app/admin/connections/does-not-exist')
+      .set('Cookie', claims.jar)
+      .expect(404);
+    await request(server)
+      .post('/api/app/admin/connections/does-not-exist/test')
+      .set('Cookie', claims.jar)
+      .set('x-csrf-token', claims.token)
+      .expect(404);
+    const res = await request(server)
+      .delete('/api/app/admin/connections/does-not-exist')
+      .set('Cookie', claims.jar)
+      .set('x-csrf-token', claims.token)
+      .expect(404);
+    expect(bodyOf<ErrorBody>(res).error).toBeDefined();
   });
 });
 

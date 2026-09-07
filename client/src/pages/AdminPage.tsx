@@ -11,11 +11,13 @@ import {
   listAdminUsers,
   updateAdminTenant,
   updateAdminUser,
+  type AdminStatus,
   type AdminTenant,
   type AdminUser,
 } from '../api/admin';
 import { ApiError } from '../api/client';
 import { useCurrentUser } from '../hooks/useCurrentUser';
+import { AdminConnectionsTab } from './AdminConnectionsTab';
 
 const EMPTY = { slug: '', name: '' };
 
@@ -39,7 +41,7 @@ interface UserEdit {
   password: string;
 }
 
-type Tab = 'tenants' | 'users';
+type Tab = 'tenants' | 'users' | 'connections';
 
 type SortDirection = 'asc' | 'desc';
 
@@ -138,6 +140,7 @@ function TabButton({
 export function AdminPage(): JSX.Element {
   const auth = useCurrentUser();
   const [enabled, setEnabled] = useState(false);
+  const [counts, setCounts] = useState<AdminStatus | null>(null);
   const [tab, setTab] = useState<Tab>('tenants');
   const [tenants, setTenants] = useState<AdminTenant[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -161,6 +164,7 @@ export function AdminPage(): JSX.Element {
     adminStatus()
       .then((status) => {
         setEnabled(status.enabled);
+        setCounts(status);
         if (status.enabled) {
           return listAdminTenants()
             .then((items) => {
@@ -381,12 +385,47 @@ export function AdminPage(): JSX.Element {
       </p>
       {error !== null && <p className="err">{error}</p>}
 
+      {counts !== null && (
+        <div className="stat-grid">
+          <div className="stat-card">
+            <span className="stat-value">{counts.tenantCount}</span>
+            <span className="stat-label">Tenants</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-value">{counts.userCount}</span>
+            <span className="stat-label">Users</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-value">{counts.connectionCount}</span>
+            <span className="stat-label">Jira connections</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-value">{counts.apiKeyCount}</span>
+            <span className="stat-label">Active API keys</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-value">{counts.itemCount}</span>
+            <span className="stat-label">Findings</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-value">{counts.ticketCount}</span>
+            <span className="stat-label">Jira tickets</span>
+          </div>
+        </div>
+      )}
+
       <div className="tabs">
         <TabButton active={tab === 'tenants'} onClick={() => setTab('tenants')}>
           Tenants
         </TabButton>
         <TabButton active={tab === 'users'} onClick={() => setTab('users')}>
           Users
+        </TabButton>
+        <TabButton
+          active={tab === 'connections'}
+          onClick={() => setTab('connections')}
+        >
+          Jira connections
         </TabButton>
       </div>
 
@@ -519,7 +558,7 @@ export function AdminPage(): JSX.Element {
             </table>
           )}
         </section>
-      ) : (
+      ) : tab === 'users' ? (
         <section>
           <h2>Users</h2>
           <label>
@@ -706,6 +745,9 @@ export function AdminPage(): JSX.Element {
             </table>
           )}
         </section>
+      ) : null}
+      {tab === 'connections' && (
+        <AdminConnectionsTab tenants={tenants} users={users} />
       )}
     </main>
   );

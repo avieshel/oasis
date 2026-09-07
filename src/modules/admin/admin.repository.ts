@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { AuditAction } from '../../infra/audit';
 import { PrismaService } from '../../infra/db';
 
 export interface AdminTenantRow {
@@ -18,6 +19,23 @@ export interface AdminUserRow {
   createdAt: Date;
 }
 
+export interface AdminConnectionRow {
+  id: string;
+  userId: string | null;
+  apiKeyId: string | null;
+  apiKeyName: string | null;
+  tenantId: string;
+  tenantSlug: string | undefined;
+  userEmail: string | null;
+  mode: string;
+  siteUrl: string | null;
+  email: string | null;
+  hasApiToken: boolean;
+  hasOauthTokens: boolean;
+  createdAt: Date;
+  lastTestedAt: Date | null;
+}
+
 @Injectable()
 export class AdminRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -28,6 +46,24 @@ export class AdminRepository {
 
   async countUsers(): Promise<number> {
     return this.prisma.users.count();
+  }
+
+  async countConnections(): Promise<number> {
+    return this.prisma.jira_connections.count();
+  }
+
+  async countApiKeys(): Promise<number> {
+    return this.prisma.api_keys.count({ where: { revoked_at: null } });
+  }
+
+  async countItems(): Promise<number> {
+    return this.prisma.oasis_items.count();
+  }
+
+  async countTickets(): Promise<number> {
+    return this.prisma.audit_log.count({
+      where: { action: AuditAction.JIRA_TICKET_CREATE },
+    });
   }
 
   async findTenantById(id: string) {
@@ -153,5 +189,132 @@ export class AdminRepository {
       this.prisma.tickets_cache.deleteMany({ where: { user_id: id } }),
       this.prisma.users.delete({ where: { id } }),
     ]);
+  }
+
+  async findConnectionById(id: string) {
+    return this.prisma.jira_connections.findUnique({ where: { id } });
+  }
+
+  async listConnections(filter?: {
+    userId?: string;
+    tenantId?: string;
+  }): Promise<AdminConnectionRow[]> {
+    const where = {
+      ...(filter?.userId === undefined ? {} : { user_id: filter.userId }),
+      ...(filter?.tenantId === undefined ? {} : { tenant_id: filter.tenantId }),
+    };
+    const connections = await this.prisma.jira_connections.findMany({
+      where,
+      orderBy: { created_at: 'asc' },
+    });
+
+    const userIds = connections
+      .map((c) => c.user_id)
+      .filter((id): id is string => id !== null);
+    const apiKeyIds = connections
+      .map((c) => c.api_key_id)
+      .filter((id): id is string => id !== null);
+
+    const [users, apiKeys, tenants] = await Promise.all([
+      userIds.length === 0
+        ? []
+        : this.prisma.users.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, email: true, tenant_id: true },
+          }),
+      apiKeyIds.length === 0
+        ? []
+        : this.prisma.api_keys.findMany({
+            where: { id: { in: apiKeyIds } },
+            select: { id: true, name: true, tenant_id: true },
+          }),
+      [...new Set(connections.map((c) => c.tenant_id))].length === 0
+        ? []
+        : this.prisma.tenants.findMany({
+            where: {
+              id: { in: [...new Set(connections.map((c) => c.tenant_id))] },
+            },
+            select: { id: true, slug: true },
+          }),
+    ]);
+
+    const userEmailById = new Map(users.map((u) => [u.id, u.email]));
+    const apiKeyNameById = new Map(apiKeys.map((k) => [k.id, k.name]));
+    const tenantSlugById = new Map(tenants.map((t) => [t.id, t.slug]));
+
+    const lastTestedAt = await this.lastTestedAtByPrincipal([
+      ...userIds,
+      ...apiKeyIds,
+    ]);
+
+    return connections.map((connection) => ({
+      id: connection.id,
+      userId: connection.user_id,
+      apiKeyId: connection.api_key_id,
+      apiKeyName:
+        connection.api_key_id === null
+          ? null
+          : (apiKeyNameById.get(connection.api_key_id) ?? null),
+      tenantId: connection.tenant_id,
+      tenantSlug: tenantSlugById.get(connection.tenant_id),
+      userEmail:
+        connection.user_id === null
+          ? null
+          : (userEmailById.get(connection.user_id) ?? null),
+      mode: connection.mode,
+      siteUrl: connection.site_url,
+      email: connection.email,
+      hasApiToken: connection.api_token_cipher !== null,
+      hasOauthTokens: connection.access_token_cipher !== null,
+      createdAt: connection.created_at,
+      lastTestedAt:
+        lastTestedAt.get(connection.user_id ?? connection.api_key_id ?? '') ??
+        null,
+    }));
+  }
+
+  async lastTestedAtByPrincipal(
+    principalIds: string[],
+  ): Promise<Map<string, Date>> {
+    if (principalIds.length === 0) {
+      return new Map();
+    }
+    const rows = await this.prisma.audit_log.groupBy({
+      by: ['user_id'],
+      where: {
+        user_id: { in: principalIds },
+        action: AuditAction.JIRA_CONNECTION_TEST,
+      },
+      _max: { at: true },
+    });
+    return new Map(rows.map((row) => [row.user_id, row._max.at!]));
+  }
+
+  async deleteConnectionCascaded(id: string): Promise<boolean> {
+    const connection = await this.prisma.jira_connections.findUnique({
+      where: { id },
+    });
+    if (!connection) {
+      return false;
+    }
+    const ops = [
+      ...(connection.user_id === null
+        ? []
+        : [
+            this.prisma.tickets_cache.deleteMany({
+              where: { user_id: connection.user_id },
+            }),
+          ]),
+      ...(connection.api_key_id === null
+        ? []
+        : [
+            this.prisma.tickets_cache.deleteMany({
+              where: { api_key_id: connection.api_key_id },
+            }),
+          ]),
+      this.prisma.jira_connections.delete({ where: { id } }),
+    ];
+    await this.prisma.$transaction(ops);
+    return true;
   }
 }

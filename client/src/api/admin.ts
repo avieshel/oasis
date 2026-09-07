@@ -4,6 +4,10 @@ export interface AdminStatus {
   enabled: boolean;
   tenantCount: number;
   userCount: number;
+  connectionCount: number;
+  apiKeyCount: number;
+  itemCount: number;
+  ticketCount: number;
 }
 
 export interface AdminTenant {
@@ -21,6 +25,46 @@ export interface AdminUser {
   email: string;
   name: string | null;
   createdAt: string;
+}
+
+export interface AdminConnection {
+  id: string;
+  userId: string | null;
+  apiKeyId: string | null;
+  apiKeyName: string | null;
+  tenantId: string;
+  tenantSlug: string | undefined;
+  userEmail: string | null;
+  mode: string;
+  siteUrl: string | null;
+  email: string | null;
+  hasApiToken: boolean;
+  hasOauthTokens: boolean;
+  createdAt: string;
+  lastTestedAt: string | null;
+}
+
+export interface AdminConnectionDetail {
+  id: string;
+  userId: string | null;
+  apiKeyId: string | null;
+  mode: string;
+  siteUrl: string | null;
+  email: string | null;
+  hasApiToken: boolean;
+  hasOauthTokens: boolean;
+  createdAt: string;
+  tokenRevealed: boolean;
+  apiToken?: string;
+}
+
+export interface JiraConnectionState {
+  connected: boolean;
+  siteUrl?: string;
+  email?: string;
+  accountId?: string;
+  displayName?: string;
+  mode?: string;
 }
 
 export async function adminStatus(): Promise<AdminStatus> {
@@ -105,4 +149,74 @@ export async function updateAdminUser(
 
 export async function deleteAdminUser(id: string): Promise<void> {
   await apiRequest<{ deleted: boolean }>('DELETE', `/admin/users/${id}`);
+}
+
+export async function listAdminConnections(params?: {
+  tenantId?: string;
+  userId?: string;
+}): Promise<AdminConnection[]> {
+  const query = new URLSearchParams();
+  if (params?.tenantId !== undefined) {
+    query.set('tenant_id', params.tenantId);
+  }
+  if (params?.userId !== undefined) {
+    query.set('user_id', params.userId);
+  }
+  const suffix = query.toString() === '' ? '' : `?${query.toString()}`;
+  const body = await apiRequest<{ connections: AdminConnection[] }>(
+    'GET',
+    `/admin/connections${suffix}`,
+  );
+  return body.connections;
+}
+
+export async function createAdminConnection(data: {
+  user_id: string;
+  site_url: string;
+  email: string;
+  api_token: string;
+}): Promise<JiraConnectionState> {
+  const body = await apiRequest<{ connection: JiraConnectionState }>(
+    'POST',
+    '/admin/connections',
+    data,
+  );
+  return body.connection;
+}
+
+export async function getAdminConnection(
+  id: string,
+  revealToken = false,
+): Promise<AdminConnectionDetail> {
+  const query = revealToken ? '?reveal_token=true' : '';
+  const body = await apiRequest<{ connection: AdminConnectionDetail }>(
+    'GET',
+    `/admin/connections/${id}${query}`,
+  );
+  return body.connection;
+}
+
+export async function updateAdminConnection(
+  id: string,
+  data: { site_url: string; email: string; api_token: string },
+): Promise<JiraConnectionState> {
+  const body = await apiRequest<{ connection: JiraConnectionState }>(
+    'PATCH',
+    `/admin/connections/${id}`,
+    data,
+  );
+  return body.connection;
+}
+
+export async function testAdminConnection(
+  id: string,
+): Promise<JiraConnectionState> {
+  return apiRequest<JiraConnectionState>(
+    'POST',
+    `/admin/connections/${id}/test`,
+  );
+}
+
+export async function deleteAdminConnection(id: string): Promise<void> {
+  await apiRequest<{ deleted: boolean }>('DELETE', `/admin/connections/${id}`);
 }

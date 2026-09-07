@@ -2,13 +2,14 @@ import { Module } from '@nestjs/common';
 import { PrismaService } from '../../infra/db';
 import { AuditService } from '../../infra/audit';
 import { AuthModule } from '../auth/auth.module';
+import { JiraModule } from '../jira/jira.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { AdminRepository } from './admin.repository';
 import { AdminGuard } from './admin.guard';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, JiraModule],
   controllers: [AdminController],
   providers: [
     AdminService,

@@ -12,16 +12,22 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import { Throttle } from '@nestjs/throttler';
+import { getRateLimitConfig } from '../../config/rate-limits';
 import {
+  adminConnectionCreateSchema,
+  adminConnectionDetailQuerySchema,
+  adminConnectionsQuerySchema,
   adminParamSchema,
   adminUsersQuerySchema,
+  jiraConnectSchema,
   tenantCreateSchema,
   tenantUpdateSchema,
   userCreateSchema,
   userUpdateSchema,
 } from '../../app/validation';
 import { AuditAction, AuditService } from '../../infra/audit';
+import { NotFoundError } from '../../app/errors';
 import { SessionUser } from '../../infra/session';
 import { CurrentTenantId, CurrentUser } from '../auth/auth.decorator';
 import { SessionGuard } from '../auth/session.guard';
@@ -29,10 +35,12 @@ import { RequestWithSession } from '../auth/request.types';
 import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
 
-function actor(req: Request) {
+const CONNECT_RATE_LIMIT = getRateLimitConfig().jiraConnect;
+
+function actor(ctx: { ip?: string | null; userAgent?: string | null }) {
   return {
-    ip: req.ip ?? null,
-    userAgent: req.headers['user-agent'] ?? null,
+    ip: ctx.ip ?? null,
+    userAgent: ctx.userAgent ?? null,
   };
 }
 
@@ -46,8 +54,8 @@ export class AdminController {
 
   @Get('status')
   async status() {
-    const { tenantCount, userCount } = await this.adminService.status();
-    return { enabled: true, tenantCount, userCount };
+    const status = await this.adminService.status();
+    return { enabled: true, ...status };
   }
 
   @Get('tenants')
@@ -198,5 +206,130 @@ export class AdminController {
       ...actor(req),
     });
     return { deleted: true };
+  }
+
+  @Get('connections')
+  async listConnections(@Query() rawQuery: unknown) {
+    const query = adminConnectionsQuerySchema.parse(rawQuery ?? {});
+    return {
+      connections: await this.adminService.listConnections({
+        userId: query.user_id,
+        tenantId: query.tenant_id,
+      }),
+    };
+  }
+
+  @Post('connections')
+  @HttpCode(HttpStatus.CREATED)
+  @Throttle({ default: CONNECT_RATE_LIMIT })
+  async createConnection(
+    @Body() rawBody: unknown,
+    @CurrentUser() user: SessionUser,
+    @CurrentTenantId() tenantId: string,
+    @Req() req: RequestWithSession,
+  ) {
+    const body = adminConnectionCreateSchema.parse(rawBody);
+    const connection = await this.adminService.createConnection(
+      body.user_id,
+      {
+        siteUrl: body.site_url,
+        email: body.email,
+        apiToken: body.api_token,
+      },
+      actor(req),
+    );
+    await this.audit.write({
+      tenantId,
+      userId: user.id,
+      action: AuditAction.ADMIN_CONNECTION_CREATE,
+      target: body.user_id,
+      ...actor(req),
+    });
+    return { connection };
+  }
+
+  @Get('connections/:id')
+  async connectionDetail(@Param('id') id: string, @Query() rawQuery: unknown) {
+    const params = adminParamSchema.parse({ id });
+    const query = adminConnectionDetailQuerySchema.parse(rawQuery ?? {});
+    return {
+      connection: await this.adminService.connectionDetail(
+        params.id,
+        query.reveal_token,
+      ),
+    };
+  }
+
+  @Patch('connections/:id')
+  @Throttle({ default: CONNECT_RATE_LIMIT })
+  async updateConnection(
+    @Param('id') id: string,
+    @Body() rawBody: unknown,
+    @CurrentUser() user: SessionUser,
+    @CurrentTenantId() tenantId: string,
+    @Req() req: RequestWithSession,
+  ) {
+    const params = adminParamSchema.parse({ id });
+    const body = jiraConnectSchema.parse(rawBody);
+    const connection = await this.adminService.updateConnection(
+      params.id,
+      {
+        siteUrl: body.site_url,
+        email: body.email,
+        apiToken: body.api_token,
+      },
+      actor(req),
+    );
+    await this.audit.write({
+      tenantId,
+      userId: user.id,
+      action: AuditAction.ADMIN_CONNECTION_UPDATE,
+      target: params.id,
+      ...actor(req),
+    });
+    return { connection };
+  }
+
+  @Delete('connections/:id')
+  async deleteConnection(
+    @Param('id') id: string,
+    @CurrentUser() user: SessionUser,
+    @CurrentTenantId() tenantId: string,
+    @Req() req: RequestWithSession,
+  ) {
+    const params = adminParamSchema.parse({ id });
+    const deleted = await this.adminService.deleteConnection(params.id);
+    if (!deleted) {
+      throw new NotFoundError('Connection');
+    }
+    await this.audit.write({
+      tenantId,
+      userId: user.id,
+      action: AuditAction.ADMIN_CONNECTION_DELETE,
+      target: params.id,
+      ...actor(req),
+    });
+    return { deleted: true };
+  }
+
+  @Post('connections/:id/test')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: CONNECT_RATE_LIMIT })
+  async testConnection(
+    @Param('id') id: string,
+    @CurrentUser() user: SessionUser,
+    @CurrentTenantId() tenantId: string,
+    @Req() req: RequestWithSession,
+  ) {
+    const params = adminParamSchema.parse({ id });
+    const state = await this.adminService.testConnection(params.id, actor(req));
+    await this.audit.write({
+      tenantId,
+      userId: user.id,
+      action: AuditAction.ADMIN_CONNECTION_TEST,
+      target: params.id,
+      ...actor(req),
+    });
+    return state;
   }
 }

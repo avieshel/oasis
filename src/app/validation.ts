@@ -138,6 +138,32 @@ export const jiraConnectSchema = z.object({
 
 export type JiraConnectInput = z.infer<typeof jiraConnectSchema>;
 
+export const adminConnectionsQuerySchema = z.object({
+  user_id: z.string().min(1).max(MAX_ENTITY_ID_LENGTH).optional(),
+  tenant_id: z.string().min(1).max(MAX_ENTITY_ID_LENGTH).optional(),
+});
+
+export type AdminConnectionsQuery = z.infer<typeof adminConnectionsQuerySchema>;
+
+export const adminConnectionCreateSchema = jiraConnectSchema.extend({
+  user_id: z.string().min(1).max(MAX_ENTITY_ID_LENGTH),
+});
+
+export type AdminConnectionCreateInput = z.infer<
+  typeof adminConnectionCreateSchema
+>;
+
+export const adminConnectionDetailQuerySchema = z.object({
+  reveal_token: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((value) => value === 'true'),
+});
+
+export type AdminConnectionDetailQuery = z.infer<
+  typeof adminConnectionDetailQuerySchema
+>;
+
 export const apiKeyCreateSchema = z.object({
   name: z.string().min(1).max(MAX_API_KEY_NAME_LENGTH),
   allowed_project_keys: z
