@@ -1,0 +1,16 @@
+node_modules
+client/node_modules
+dist
+client/dist
+*.db
+*.db-journal
+.env
+.git
+.github
+.husky
+docs
+local
+coverage
+prisma/dev.db
+prisma/test.db
+*.log

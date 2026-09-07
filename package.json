@@ -22,6 +22,7 @@
     "db:migrate": "npx prisma migrate dev --name init",
     "db:generate": "npx prisma generate",
     "db:seed": "npx tsx prisma/seed.ts",
+    "seed:demo": "tsx src/scripts/seed-demo.ts",
     "jira:smoke": "tsx src/scripts/jira-connect-smoke.ts",
     "api:smoke": "tsx src/scripts/rest-api-smoke.ts",
     "db:switch-sqlite": "cp prisma/schema.sqlite.prisma prisma/schema.prisma",

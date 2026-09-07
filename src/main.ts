@@ -1,15 +1,34 @@
 import 'reflect-metadata';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { setupSwagger } from './swagger';
 import { loadConfig } from './config';
 
+const CLIENT_DIST = path.join(__dirname, '..', 'client', 'dist');
+const CLIENT_INDEX = path.join(CLIENT_DIST, 'index.html');
+
+// Routes handled by the backend; everything else that isn't a static file
+// falls through to the SPA index so deep links (/login, /settings) work.
+const RESERVED_PREFIXES = [
+  '/api',
+  '/swagger',
+  '/swagger-json',
+  '/healthz',
+  '/readyz',
+];
+
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
   app.useLogger(app.get(Logger));
 
   const corsOrigin =
@@ -37,6 +56,31 @@ async function bootstrap(): Promise<void> {
 
   app.setGlobalPrefix('api', { exclude: ['healthz', 'readyz'] });
   setupSwagger(app);
+
+  const serveClient =
+    config.NODE_ENV === 'production' && existsSync(CLIENT_INDEX);
+  if (serveClient) {
+    app.useStaticAssets(CLIENT_DIST);
+  }
+
+  await app.init();
+
+  if (serveClient) {
+    const expressApp = app.getHttpAdapter().getInstance();
+    expressApp.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+      const url = req.path;
+      if (
+        RESERVED_PREFIXES.some(
+          (prefix) => url === prefix || url.startsWith(`${prefix}/`),
+        )
+      ) {
+        return next();
+      }
+      if (path.extname(url) !== '') return next();
+      res.sendFile(CLIENT_INDEX);
+    });
+  }
 
   await app.listen(config.PORT);
 }

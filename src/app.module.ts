@@ -23,12 +23,15 @@ import { AppExceptionFilter } from './app/errors';
       validate: validateConfig,
     }),
     LoggerModule.forRoot({
-      pinoHttp: {
-        transport: {
-          target: 'pino-pretty',
-          options: { singleLine: true },
-        },
-      },
+      pinoHttp:
+        process.env.NODE_ENV === 'production'
+          ? {}
+          : {
+              transport: {
+                target: 'pino-pretty',
+                options: { singleLine: true },
+              },
+            },
     }),
     ThrottlerModule.forRootAsync({
       useFactory: () => {
