@@ -80,3 +80,68 @@ To reset:
 ```sh
 docker compose down && rm -rf ./data
 ```
+
+## Reading the service logs
+
+The app logs to **stdout** via `nestjs-pino` (`pino` under the hood).
+
+In production (`NODE_ENV=production`, which the `app` service uses), logs
+are emitted as single-line JSON — one object per request/event, ready for
+any log shipper. In dev mode logs are pretty-printed for readability.
+
+### Stream logs from the running container
+
+```sh
+# Tail the app service logs
+docker compose logs -f app
+
+# All services, last 200 lines, no follow
+docker compose logs --tail=200 --no-color
+
+# Logs from a specific time window
+docker compose logs --since=10m app
+```
+
+### Filter for specific events
+
+Each log line is a JSON object on production. Useful fields:
+
+| Field                    | Meaning                                                             |
+| ------------------------ | ------------------------------------------------------------------- |
+| `req.method` / `req.url` | Incoming HTTP request                                               |
+| `res.statusCode`         | Response status                                                     |
+| `req.id`                 | Per-request correlation id (present in every line for that request) |
+| `level`                  | 10 trace, 20 debug, 30 info, 40 warn, 50 error, 60 fatal            |
+| `time`                   | Epoch milliseconds when the line was emitted                        |
+
+Pipe through `jq` to narrow down:
+
+```sh
+# Only 4xx and 5xx responses
+docker compose logs --no-color app | jq -c 'select(.res.statusCode >= 400)'
+
+# Only errors
+docker compose logs --no-color app | jq -c 'select(.level >= 50)'
+
+# All log lines for a single request
+docker compose logs --no-color app | jq -c 'select(.req.id == "<id>")'
+
+# Counts of status codes
+docker compose logs --no-color app | jq -r '.res.statusCode' | sort | uniq -c
+```
+
+### Background service logs (the one-shot `seed`)
+
+The `seed` service exits after it finishes, so its logs are best read
+with `--no-log-prefix` and a follow-off tail:
+
+```sh
+docker compose run --rm seed               # prints to terminal
+docker compose logs seed                   # if it ran in the background
+```
+
+### Local dev (npm run dev)
+
+When you run `npm run dev` (without Docker), the same `pino` logger is in
+**pretty mode** — colored, single-line, timestamped, printed to the
+terminal where you started the process.
