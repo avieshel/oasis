@@ -62,17 +62,10 @@ async function bootstrap(): Promise<void> {
   app.setGlobalPrefix('api', { exclude: ['healthz', 'readyz'] });
   setupSwagger(app);
 
-  const serveClient =
-    config.NODE_ENV === 'production' && existsSync(CLIENT_INDEX);
+  const serveClient = existsSync(CLIENT_INDEX);
   if (serveClient) {
     app.useStaticAssets(CLIENT_DIST);
-  }
-
-  await app.init();
-
-  if (serveClient) {
-    const expressApp = app.getHttpAdapter().getInstance();
-    expressApp.use((req: Request, res: Response, next: NextFunction) => {
+    app.use((req: Request, res: Response, next: NextFunction) => {
       if (req.method !== 'GET' && req.method !== 'HEAD') return next();
       const url = req.path;
       if (
@@ -86,6 +79,8 @@ async function bootstrap(): Promise<void> {
       res.sendFile(CLIENT_INDEX);
     });
   }
+
+  await app.init();
 
   if (config.PURGE_SESSIONS_ON_STARTUP) {
     const prisma: PrismaService = app.get(PrismaService);
