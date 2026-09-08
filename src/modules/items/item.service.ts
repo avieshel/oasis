@@ -313,7 +313,7 @@ export class ItemService {
     };
     const ticket = await this.jiraService.createTicket(
       tenantId,
-      { kind: 'user', userId: ctx.userId },
+      { type: 'user', id: ctx.userId, tenantId, email: '' },
       {
         projectKey,
         title: item.title,

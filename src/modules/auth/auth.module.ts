@@ -1,22 +1,16 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { PrismaService } from '../../infra/db';
 import { AuditService } from '../../infra/audit';
 import { SessionManager } from '../../infra/session';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { SessionGuard } from './session.guard';
 
+@Global()
 @Module({
   imports: [UsersModule],
   controllers: [AuthController],
-  providers: [
-    AuthService,
-    SessionManager,
-    AuditService,
-    SessionGuard,
-    PrismaService,
-  ],
-  exports: [SessionGuard, SessionManager, AuditService],
+  providers: [AuthService, SessionManager, AuditService, PrismaService],
+  exports: [SessionManager, AuditService],
 })
 export class AuthModule {}

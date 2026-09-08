@@ -18,60 +18,61 @@ import {
   itemUpdateSchema,
 } from '../../app/validation';
 import { getRateLimitConfig } from '../../config/rate-limits';
-import { SessionUser } from '../../infra/session';
-import { CurrentTenantId, CurrentUser } from '../auth/auth.decorator';
+import { AuthorizationGuard } from '../authorization/authorization.guard';
+import { CurrentPrincipal } from '../authorization/authorization.decorator';
+import { Principal } from '../authorization/models';
 import { RequestWithSession } from '../auth/request.types';
-import { SessionGuard } from '../auth/session.guard';
 import { ItemService, type ItemAuditContext } from './item.service';
 
 const ITEM_CREATE_RATE_LIMIT = getRateLimitConfig().itemCreate;
 const TICKET_CREATE_RATE_LIMIT = getRateLimitConfig().ticketCreateUi;
 
 function auditContext(
-  user: SessionUser,
+  principal: Principal,
   req: RequestWithSession,
 ): ItemAuditContext {
   return {
-    userId: user.id,
+    userId: principal.id,
     ip: req.ip ?? null,
     userAgent: req.headers['user-agent'] ?? null,
   };
 }
 
 @Controller('app/items')
-@UseGuards(SessionGuard)
+@UseGuards(AuthorizationGuard)
 export class ItemController {
   constructor(private readonly itemService: ItemService) {}
 
   @Get()
   async list(
-    @CurrentTenantId() tenantId: string,
+    @CurrentPrincipal() principal: Principal,
     @Req() req: RequestWithSession,
   ) {
     const query = itemsQuerySchema.parse(req.query);
-    return this.itemService.list(tenantId, query);
+    return this.itemService.list(principal.tenantId, query);
   }
 
   @Get('summary')
-  async summary(@CurrentTenantId() tenantId: string) {
-    return this.itemService.summary(tenantId);
+  async summary(@CurrentPrincipal() principal: Principal) {
+    return this.itemService.summary(principal.tenantId);
   }
 
   @Post('random')
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ default: ITEM_CREATE_RATE_LIMIT })
   async generate(
-    @CurrentTenantId() tenantId: string,
-    @CurrentUser() user: SessionUser,
+    @CurrentPrincipal() principal: Principal,
     @Req() req: RequestWithSession,
   ) {
-    return this.itemService.generateRandom(tenantId, auditContext(user, req));
+    return this.itemService.generateRandom(
+      principal.tenantId,
+      auditContext(principal, req),
+    );
   }
 
   @Patch(':id')
   async update(
-    @CurrentTenantId() tenantId: string,
-    @CurrentUser() user: SessionUser,
+    @CurrentPrincipal() principal: Principal,
     @Param('id') id: string,
     @Body() rawBody: unknown,
     @Req() req: RequestWithSession,
@@ -79,10 +80,10 @@ export class ItemController {
     const params = itemParamSchema.parse({ id });
     const body = itemUpdateSchema.parse(rawBody);
     return this.itemService.updateStatus(
-      tenantId,
+      principal.tenantId,
       params.id,
       body.status,
-      auditContext(user, req),
+      auditContext(principal, req),
     );
   }
 
@@ -90,8 +91,7 @@ export class ItemController {
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ default: TICKET_CREATE_RATE_LIMIT })
   async createTicket(
-    @CurrentTenantId() tenantId: string,
-    @CurrentUser() user: SessionUser,
+    @CurrentPrincipal() principal: Principal,
     @Param('id') id: string,
     @Body() rawBody: unknown,
     @Req() req: RequestWithSession,
@@ -99,8 +99,8 @@ export class ItemController {
     const params = itemParamSchema.parse({ id });
     const body = itemTicketCreateSchema.parse(rawBody);
     return this.itemService.createTicket(
-      tenantId,
-      auditContext(user, req),
+      principal.tenantId,
+      auditContext(principal, req),
       params.id,
       body.project_key,
     );

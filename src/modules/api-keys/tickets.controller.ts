@@ -20,17 +20,16 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { z } from 'zod';
+import { ApiKeyProjectForbiddenError } from '../../app/errors';
 import {
   jiraRecentTicketsQuerySchema,
   ticketCreateSchema,
 } from '../../app/validation';
-import { ApiKeyProjectForbiddenError } from '../../app/errors';
 import { getRateLimitConfig } from '../../config/rate-limits';
 import { zodSchemaObject } from '../../swagger';
-import { CurrentApiKey } from './api-keys.decorator';
-import { ApiKeyGuard } from './api-key.guard';
-import { ApiKeyThrottleGuard } from './api-key.throttle.guard';
-import type { ApiKeyIdentity } from './request.types';
+import { AuthorizationGuard } from '../authorization/authorization.guard';
+import { CurrentPrincipal } from '../authorization/authorization.decorator';
+import { Principal } from '../authorization/models';
 import { JiraService, type JiraAuditContext } from '../jira/jira.service';
 
 const TICKET_CREATE_API_RATE_LIMIT = getRateLimitConfig().ticketCreateApi;
@@ -88,10 +87,23 @@ function auditContext(req: Request): JiraAuditContext {
   };
 }
 
+function assertProjectAllowed(principal: Principal, projectKey: string): void {
+  if (principal.type === 'api_key') {
+    const allowed = principal.allowedProjectKeys;
+    if (
+      allowed !== null &&
+      allowed !== undefined &&
+      !allowed.includes(projectKey)
+    ) {
+      throw new ApiKeyProjectForbiddenError(projectKey);
+    }
+  }
+}
+
 @ApiTags('tickets (machine API)')
 @ApiBearerAuth('api-key')
 @Controller('v1/tickets')
-@UseGuards(ApiKeyGuard, ApiKeyThrottleGuard)
+@UseGuards(AuthorizationGuard)
 export class TicketsRestController {
   constructor(private readonly jiraService: JiraService) {}
 
@@ -102,7 +114,7 @@ export class TicketsRestController {
     summary: 'Create a Jira ticket',
     description:
       'Creates an Oasis finding ticket in the configured Jira project using ' +
-      'the API key’s service-account connection. The key must be scoped for ' +
+      "the API key's service-account connection. The key must be scoped for " +
       'the project (allowed_project_keys) unless unscoped.',
   })
   @ApiBody({
@@ -153,15 +165,15 @@ export class TicketsRestController {
     description: 'Upstream Jira failure',
   })
   async create(
-    @CurrentApiKey() key: ApiKeyIdentity,
+    @CurrentPrincipal() principal: Principal,
     @Body() rawBody: unknown,
     @Req() req: Request,
   ) {
     const body = ticketCreateSchema.parse(rawBody);
-    assertProjectAllowed(key, body.project_key);
+    assertProjectAllowed(principal, body.project_key);
     return this.jiraService.createTicket(
-      key.tenantId,
-      { kind: 'api_key', apiKeyId: key.id },
+      principal.tenantId,
+      principal,
       {
         projectKey: body.project_key,
         title: body.title,
@@ -210,26 +222,19 @@ export class TicketsRestController {
     status: HttpStatus.FORBIDDEN,
     description: 'Key not scoped for the project',
   })
-  async recent(@CurrentApiKey() key: ApiKeyIdentity, @Req() req: Request) {
+  async recent(@CurrentPrincipal() principal: Principal, @Req() req: Request) {
     const query = jiraRecentTicketsQuerySchema.parse(req.query);
     if (query.project_key !== undefined) {
-      assertProjectAllowed(key, query.project_key);
+      assertProjectAllowed(principal, query.project_key);
     }
     return this.jiraService.listRecentTickets(
-      key.tenantId,
-      { kind: 'api_key', apiKeyId: key.id },
+      principal.tenantId,
+      principal,
       query.project_key ?? null,
       query.refresh,
-      key.allowedProjectKeys ?? undefined,
+      principal.type === 'api_key' && principal.allowedProjectKeys
+        ? principal.allowedProjectKeys
+        : undefined,
     );
-  }
-}
-
-function assertProjectAllowed(key: ApiKeyIdentity, projectKey: string): void {
-  if (
-    key.allowedProjectKeys !== null &&
-    !key.allowedProjectKeys.includes(projectKey)
-  ) {
-    throw new ApiKeyProjectForbiddenError(projectKey);
   }
 }

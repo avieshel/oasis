@@ -6,12 +6,16 @@ import { csrfOriginAllowed, csrfTokensMatch } from '../../infra/csrf';
 import { readCookie } from './request.types';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const ADMIN_EXT_PREFIX = '/app/admin';
 
 @Injectable()
 export class CsrfGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
 
+    if (request.path.startsWith(ADMIN_EXT_PREFIX)) {
+      return true;
+    }
     if (SAFE_METHODS.has(request.method)) {
       return true;
     }

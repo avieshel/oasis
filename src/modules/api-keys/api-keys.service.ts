@@ -60,11 +60,4 @@ export class ApiKeysService {
       throw new NotFoundError('API key');
     }
   }
-
-  async assertOwned(tenantId: string, id: string): Promise<void> {
-    const row = await this.repository.findById(tenantId, id);
-    if (row === null) {
-      throw new NotFoundError('API key');
-    }
-  }
 }
