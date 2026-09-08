@@ -9,11 +9,12 @@ import { PrismaService } from './infra/db';
 import { HealthModule } from './modules/health/health.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CsrfGuard } from './modules/auth/csrf.guard';
 import { JiraModule } from './modules/jira/jira.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
-import { AdminModule } from './modules/admin/admin.module';
+import { AdminExtModule } from './modules/admin-ext/admin-ext.module';
+import { AuthorizationModule } from './modules/authorization/authorization.module';
 import { ItemsModule } from './modules/items/item.module';
-import { CsrfGuard } from './modules/auth/csrf.guard';
 import { AppExceptionFilter } from './app/errors';
 
 @Module({
@@ -49,7 +50,8 @@ import { AppExceptionFilter } from './app/errors';
     AuthModule,
     JiraModule,
     ApiKeysModule,
-    AdminModule,
+    AdminExtModule,
+    AuthorizationModule,
     ItemsModule,
   ],
   providers: [

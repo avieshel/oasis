@@ -17,10 +17,9 @@ import {
   ticketCreateSchema,
 } from '../../app/validation';
 import { getRateLimitConfig } from '../../config/rate-limits';
-import { SessionUser } from '../../infra/session';
-import { CurrentTenantId, CurrentUser } from '../auth/auth.decorator';
-import { SessionGuard } from '../auth/session.guard';
-import { RequestWithSession } from '../auth/request.types';
+import { AuthorizationGuard } from '../authorization/authorization.guard';
+import { CurrentPrincipal } from '../authorization/authorization.decorator';
+import { Principal } from '../authorization/models';
 import { JiraService, type JiraAuditContext } from './jira.service';
 
 const CONNECT_RATE_LIMIT = getRateLimitConfig().jiraConnect;
@@ -34,7 +33,7 @@ function auditContext(req: Request): JiraAuditContext {
 }
 
 @Controller('app/jira')
-@UseGuards(SessionGuard)
+@UseGuards(AuthorizationGuard)
 export class JiraController {
   constructor(private readonly jiraService: JiraService) {}
 
@@ -42,15 +41,14 @@ export class JiraController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: CONNECT_RATE_LIMIT })
   async connect(
-    @CurrentUser() user: SessionUser,
-    @CurrentTenantId() tenantId: string,
+    @CurrentPrincipal() principal: Principal,
     @Body() rawBody: unknown,
-    @Req() req: RequestWithSession,
+    @Req() req: Request,
   ) {
     const body = jiraConnectSchema.parse(rawBody);
     return this.jiraService.connect(
-      tenantId,
-      { kind: 'user', userId: user.id },
+      principal.tenantId,
+      principal,
       {
         siteUrl: body.site_url,
         email: body.email,
@@ -63,51 +61,37 @@ export class JiraController {
   @Delete('connect')
   @Throttle({ default: CONNECT_RATE_LIMIT })
   async disconnect(
-    @CurrentUser() user: SessionUser,
-    @CurrentTenantId() tenantId: string,
-    @Req() req: RequestWithSession,
+    @CurrentPrincipal() principal: Principal,
+    @Req() req: Request,
   ) {
     return this.jiraService.disconnect(
-      tenantId,
-      { kind: 'user', userId: user.id },
+      principal.tenantId,
+      principal,
       auditContext(req),
     );
   }
 
   @Get('status')
-  async status(
-    @CurrentUser() user: SessionUser,
-    @CurrentTenantId() tenantId: string,
-  ) {
-    return this.jiraService.status(tenantId, {
-      kind: 'user',
-      userId: user.id,
-    });
+  async status(@CurrentPrincipal() principal: Principal) {
+    return this.jiraService.status(principal.tenantId, principal);
   }
 
   @Get('projects')
   @Throttle({ default: PROJECTS_RATE_LIMIT })
-  async projects(
-    @CurrentUser() user: SessionUser,
-    @CurrentTenantId() tenantId: string,
-  ) {
-    return this.jiraService.listProjects(tenantId, {
-      kind: 'user',
-      userId: user.id,
-    });
+  async projects(@CurrentPrincipal() principal: Principal) {
+    return this.jiraService.listProjects(principal.tenantId, principal);
   }
 
   @Post('tickets')
   async createTicket(
-    @CurrentUser() user: SessionUser,
-    @CurrentTenantId() tenantId: string,
+    @CurrentPrincipal() principal: Principal,
     @Body() rawBody: unknown,
-    @Req() req: RequestWithSession,
+    @Req() req: Request,
   ) {
     const body = ticketCreateSchema.parse(rawBody);
     return this.jiraService.createTicket(
-      tenantId,
-      { kind: 'user', userId: user.id },
+      principal.tenantId,
+      principal,
       {
         projectKey: body.project_key,
         title: body.title,
@@ -119,14 +103,13 @@ export class JiraController {
 
   @Get('tickets/recent')
   async listRecentTickets(
-    @CurrentUser() user: SessionUser,
-    @CurrentTenantId() tenantId: string,
-    @Req() req: RequestWithSession,
+    @CurrentPrincipal() principal: Principal,
+    @Req() req: Request,
   ) {
     const query = jiraRecentTicketsQuerySchema.parse(req.query);
     return this.jiraService.listRecentTickets(
-      tenantId,
-      { kind: 'user', userId: user.id },
+      principal.tenantId,
+      principal,
       query.project_key ?? null,
       query.refresh,
     );

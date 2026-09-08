@@ -17,9 +17,10 @@ import { getRateLimitConfig } from '../../config/rate-limits';
 import { CSRF_COOKIE_NAME, SESSION_COOKIE_NAME } from '../../config/session';
 import { sessionCookieOptions, SessionUser } from '../../infra/session';
 import { csrfCookieOptions, generateCsrfToken } from '../../infra/csrf';
+import { AuthorizationGuard } from '../authorization/authorization.guard';
+import { CurrentPrincipal } from '../authorization/authorization.decorator';
+import { Principal } from '../authorization/models';
 import { AuthService, LoginContext } from './auth.service';
-import { CurrentUser } from './auth.decorator';
-import { SessionGuard } from './session.guard';
 import { readCookie, RequestWithSession } from './request.types';
 
 const LOGIN_RATE_LIMIT = getRateLimitConfig().login;
@@ -95,8 +96,14 @@ export class AuthController {
   }
 
   @Get('auth/me')
-  @UseGuards(SessionGuard)
-  me(@CurrentUser() user: SessionUser) {
+  @UseGuards(AuthorizationGuard)
+  me(@CurrentPrincipal() principal: Principal) {
+    const user: SessionUser = {
+      id: principal.id,
+      email: principal.type === 'user' ? principal.email : '',
+      tenantId: principal.tenantId,
+      tenantName: '',
+    };
     return { user };
   }
 }

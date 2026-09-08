@@ -22,9 +22,9 @@ import { AuditAction, AuditService } from '../../infra/audit';
 import { apiKeyCreateSchema, jiraConnectSchema } from '../../app/validation';
 import { getRateLimitConfig } from '../../config/rate-limits';
 import { zodSchemaObject } from '../../swagger';
-import { SessionUser } from '../../infra/session';
-import { CurrentTenantId, CurrentUser } from '../auth/auth.decorator';
-import { SessionGuard } from '../auth/session.guard';
+import { AuthorizationGuard } from '../authorization/authorization.guard';
+import { CurrentPrincipal } from '../authorization/authorization.decorator';
+import { Principal } from '../authorization/models';
 import type { RequestWithSession } from '../auth/request.types';
 import { JiraService, type JiraAuditContext } from '../jira/jira.service';
 import { ApiKeysService } from './api-keys.service';
@@ -41,7 +41,7 @@ function auditContext(req: RequestWithSession): JiraAuditContext {
 
 @ApiTags('api keys (session-authed management)')
 @Controller('app/api-keys')
-@UseGuards(SessionGuard)
+@UseGuards(AuthorizationGuard)
 export class ApiKeysController {
   constructor(
     private readonly apiKeysService: ApiKeysService,
@@ -92,19 +92,18 @@ export class ApiKeysController {
     },
   })
   async createKey(
-    @CurrentUser() user: SessionUser,
-    @CurrentTenantId() tenantId: string,
+    @CurrentPrincipal() principal: Principal,
     @Body() rawBody: unknown,
     @Req() req: RequestWithSession,
   ) {
     const body = apiKeyCreateSchema.parse(rawBody);
-    const created = await this.apiKeysService.createKey(tenantId, {
+    const created = await this.apiKeysService.createKey(principal.tenantId, {
       name: body.name,
       allowedProjectKeys: body.allowed_project_keys,
     });
     await this.audit.write({
-      tenantId,
-      userId: user.id,
+      tenantId: principal.tenantId,
+      userId: principal.id,
       action: AuditAction.API_KEY_CREATE,
       target: created.key.id,
       ip: req.ip ?? null,
@@ -120,8 +119,8 @@ export class ApiKeysController {
       'Metadata for all tenant API keys; never the hash or raw value.',
   })
   @ApiResponse({ status: HttpStatus.OK, description: 'Key metadata list' })
-  async listKeys(@CurrentTenantId() tenantId: string) {
-    return this.apiKeysService.listKeys(tenantId);
+  async listKeys(@CurrentPrincipal() principal: Principal) {
+    return this.apiKeysService.listKeys(principal.tenantId);
   }
 
   @Delete(':id')
@@ -139,15 +138,14 @@ export class ApiKeysController {
   })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Unknown key id' })
   async revokeKey(
-    @CurrentUser() user: SessionUser,
-    @CurrentTenantId() tenantId: string,
+    @CurrentPrincipal() principal: Principal,
     @Param('id') id: string,
     @Req() req: RequestWithSession,
   ) {
-    await this.apiKeysService.revokeKey(tenantId, id);
+    await this.apiKeysService.revokeKey(principal.tenantId, id);
     await this.audit.write({
-      tenantId,
-      userId: user.id,
+      tenantId: principal.tenantId,
+      userId: principal.id,
       action: AuditAction.API_KEY_REVOKE,
       target: id,
       ip: req.ip ?? null,
@@ -173,7 +171,7 @@ export class ApiKeysController {
       account: {
         value: {
           site_url: 'https://acme.atlassian.net',
-          email: 'svc-oasis@acme.io',
+          email: '[EMAIL]',
           api_token: '••••••••',
         },
       },
@@ -182,16 +180,15 @@ export class ApiKeysController {
   @ApiResponse({ status: HttpStatus.OK, description: 'Connection established' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Unknown key id' })
   async connectKeyJira(
-    @CurrentTenantId() tenantId: string,
+    @CurrentPrincipal() principal: Principal,
     @Param('id') id: string,
     @Body() rawBody: unknown,
     @Req() req: RequestWithSession,
   ) {
-    await this.apiKeysService.assertOwned(tenantId, id);
     const body = jiraConnectSchema.parse(rawBody);
     return this.jiraService.connect(
-      tenantId,
-      { kind: 'api_key', apiKeyId: id },
+      principal.tenantId,
+      { type: 'api_key', id, tenantId: principal.tenantId },
       {
         siteUrl: body.site_url,
         email: body.email,
@@ -215,14 +212,13 @@ export class ApiKeysController {
   @ApiResponse({ status: HttpStatus.OK, description: 'Connection state' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Unknown key id' })
   async testKeyJira(
-    @CurrentTenantId() tenantId: string,
+    @CurrentPrincipal() principal: Principal,
     @Param('id') id: string,
     @Req() req: RequestWithSession,
   ) {
-    await this.apiKeysService.assertOwned(tenantId, id);
     return this.jiraService.testConnection(
-      tenantId,
-      { kind: 'api_key', apiKeyId: id },
+      principal.tenantId,
+      { type: 'api_key', id, tenantId: principal.tenantId },
       auditContext(req),
     );
   }
@@ -235,11 +231,14 @@ export class ApiKeysController {
   @ApiResponse({ status: HttpStatus.OK, description: 'Connection state' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Unknown key id' })
   async keyJiraStatus(
-    @CurrentTenantId() tenantId: string,
+    @CurrentPrincipal() principal: Principal,
     @Param('id') id: string,
   ) {
-    await this.apiKeysService.assertOwned(tenantId, id);
-    return this.jiraService.status(tenantId, { kind: 'api_key', apiKeyId: id });
+    return this.jiraService.status(principal.tenantId, {
+      type: 'api_key',
+      id,
+      tenantId: principal.tenantId,
+    });
   }
 
   @Delete(':id/jira/connect')
@@ -251,14 +250,13 @@ export class ApiKeysController {
   @ApiResponse({ status: HttpStatus.OK, description: 'Disconnected' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Unknown key id' })
   async disconnectKeyJira(
-    @CurrentTenantId() tenantId: string,
+    @CurrentPrincipal() principal: Principal,
     @Param('id') id: string,
     @Req() req: RequestWithSession,
   ) {
-    await this.apiKeysService.assertOwned(tenantId, id);
     return this.jiraService.disconnect(
-      tenantId,
-      { kind: 'api_key', apiKeyId: id },
+      principal.tenantId,
+      { type: 'api_key', id, tenantId: principal.tenantId },
       auditContext(req),
     );
   }
